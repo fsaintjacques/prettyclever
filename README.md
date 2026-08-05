@@ -88,11 +88,19 @@ held-out seeds confirm every tuned/learned entry):
 | random | 58.7 ± 17 | 83 | 0.1 | floor |
 
 Solo benchmark from the rulebook: 140 "not bad", 200 "hats off", 240 "what a
-genius", 280+ "so clever". td-net's median game is 244; its best games clear
-290. Next levers, in expected-value order: phase-gated die-face features for
-the known-faces decision points (the net's one structural blind spot), wider
-hidden layers once the feature-fixed curve saturates, and deeper search with
-better chance sampling on top of the improved net.
+genius", 280+ "so clever". td-net's median game is 254; its best games clear
+290 (max observed 301).
+
+**The ~250 ceiling is the policy class, not the network.** Three
+architectures — 128×128 with 163 features, 128×128 with 216 face-aware
+features, and 256×256 with 216 features (trained to 384k episodes on the
+parallel trainer) — all converge to 250–251 official / 251–253 frozen-eval,
+and all resist further training (early-stops fire, late evals degrade).
+One-ply afterstate argmax with a TD-learned value function of this family
+appears to be worth ~250 points; the remaining distance to perfect play
+lives in multi-ply search and/or better training signal, not capacity.
+A per-seed clairvoyant upper bound (hindsight solver over predetermined
+dice) is the natural next instrument to measure what actually remains.
 
 ## Variants
 
