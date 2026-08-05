@@ -3,37 +3,27 @@
  * marks, the silver-die pick ban, the preRoll return window, action-bar caps
  * with end-of-bar bonuses, per-round +1 flags, and free (?) resolution.
  *
- * The stage-3 variant file does not exist yet, so these run against a test
- * variant assembled here from the stage-1 factories with the exact sheet
- * data of docs/RULES-TWICE.md — doubling as a dry-run of stage 3.
+ * These run against the real variant; the sheet-data checks live in
+ * tests/twice-as-clever.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import {
   applyActionMut,
-  descendTrackArea,
   getPending,
   mulberry32,
   newGame,
-  pairsTrackArea,
   resolveChanceMut,
-  silverGridArea,
   silverGridCell,
   thatsPrettyClever,
-  writeTrackArea,
-  yellowLatticeArea,
+  twiceAsClever,
   type Action,
   type Effect,
   type GameState,
   type Placement,
-  type VariantDef,
 } from '../src/engine';
 import { makeRandom } from '../src/strategies';
 import { playGame } from '../src/sim/runner';
 
-const fox: Effect = { t: 'fox' };
-const reroll: Effect = { t: 'reroll' };
-const plus1: Effect = { t: 'plus1' };
-const ret: Effect = { t: 'return' };
 const free = (area: string): Effect => ({ t: 'free', area });
 const blackQ: Effect = {
   t: 'choice',
@@ -41,112 +31,7 @@ const blackQ: Effect = {
   options: [free('silver'), free('yellow'), free('blue'), free('green'), free('pink')],
 };
 
-const tv: VariantDef = {
-  id: 'twice-test',
-  name: 'Twice as Clever (test rig)',
-  colors: ['white', 'yellow', 'blue', 'green', 'pink', 'silver'],
-  wild: 'white',
-  rounds: 6,
-  picksPerTurn: 3,
-  roundBonuses: [reroll, plus1, ret, blackQ, null, null],
-  bars: {
-    reroll: { size: 6, endBonus: fox },
-    plus1: { size: 6, endBonus: free('silver') },
-    return: { size: 6, endBonus: free('pink') },
-  },
-  plus1Scope: 'round',
-  areas: [
-    silverGridArea({
-      id: 'silver',
-      label: 'Silver',
-      colors: ['silver'],
-      rows: ['yellow', 'blue', 'green', 'pink'],
-      columnBonuses: [plus1, free('yellow'), fox, free('blue'), free('green'), free('pink')],
-      points: [0, 2, 4, 7, 11, 16, 22],
-    }),
-    yellowLatticeArea({
-      id: 'yellow',
-      label: 'Yellow',
-      colors: ['yellow'],
-      // prettier-ignore
-      values: [
-        null, 3, null, 6,
-        1, null, 2, null,
-        null, 4, null, 3,
-        2, null, 5, null,
-        null, 5, null, 4,
-      ],
-      groups: [
-        { kind: 'row', cells: [1, 3], bonus: free('blue') },
-        { kind: 'row', cells: [4, 6], bonus: ret },
-        { kind: 'row', cells: [9, 11], bonus: free('yellow') },
-        { kind: 'row', cells: [12, 14], bonus: free('green') },
-        { kind: 'row', cells: [17, 19], bonus: free('pink') },
-        { kind: 'col', cells: [4, 12], bonus: reroll },
-        { kind: 'col', cells: [1, 9, 17], bonus: plus1 },
-        { kind: 'col', cells: [6, 14], bonus: free('silver') },
-        { kind: 'col', cells: [3, 11, 19], bonus: fox },
-      ],
-      points: [0, 3, 10, 21, 36, 55, 75, 96, 118, 141, 165],
-    }),
-    descendTrackArea({
-      id: 'blue',
-      label: 'Blue',
-      colors: ['blue'],
-      effectiveValue: (faces) => faces.blue + faces.white,
-      size: 12,
-      minValue: 2,
-      maxValue: 12,
-      points: [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78],
-      cellBonuses: {
-        1: ret,
-        2: free('yellow'),
-        4: plus1,
-        5: reroll,
-        6: free('pink'),
-        8: fox,
-        9: ret,
-        11: free('green'),
-      },
-    }),
-    pairsTrackArea({
-      id: 'green',
-      label: 'Green',
-      colors: ['green'],
-      multipliers: [2, 2, 2, 1, 3, 3, 3, 2, 3, 1, 4, 1],
-      cellBonuses: {
-        1: reroll,
-        3: free('blue'),
-        4: ret,
-        6: fox,
-        7: free('silver'),
-        8: plus1,
-        10: free('pink'),
-        11: free('yellow'),
-      },
-    }),
-    writeTrackArea({
-      id: 'pink',
-      label: 'Pink',
-      colors: ['pink'],
-      multipliers: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      cellBonuses: {
-        2: reroll,
-        3: ret,
-        4: plus1,
-        5: free('green'),
-        6: free('yellow'),
-        7: fox,
-        8: free('silver'),
-        9: reroll,
-        10: free('blue'),
-        11: free('yellow'),
-      },
-      bonusMinValues: { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 2, 8: 3, 9: 4, 10: 5, 11: 6 },
-    }),
-  ],
-  rating: [{ min: -Infinity, label: 'test rig' }],
-};
+const tv = twiceAsClever;
 
 // Die ids in tv.colors order.
 const W = 0; // white (wild)
@@ -491,7 +376,7 @@ describe('free (?) bonuses', () => {
   });
 });
 
-describe('full games on the test variant', () => {
+describe('full games', () => {
   it('random games terminate, are deterministic per seed, and reach round 6', () => {
     for (let seed = 1; seed <= 15; seed++) {
       const a = playGame(tv, makeRandom(), seed);
