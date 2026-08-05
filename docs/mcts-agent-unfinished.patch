@@ -1,0 +1,259 @@
+diff --git a/src/strategies/index.ts b/src/strategies/index.ts
+index 9571346..8981738 100644
+--- a/src/strategies/index.ts
++++ b/src/strategies/index.ts
+@@ -32,6 +32,10 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
+   // Tuned eval transfers cleanly to search: 183.8 ± 35.2 (seed 11, 100 games)
+   // vs 165.1 for expectimax on default weights.
+   'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
++  // Defaults are the tuned config: sampled-greedy rollouts to a two-round
++  // phase-consistent boundary over the CEM-tuned eval (seed 11, 100 games:
++  // 196.0 ± 35.4 @ ~225ms/game; held out seed 777). The pre-tuning search is
++  // reachable via opts, see mcts.ts.
+   mcts: (opts) => makeMcts(opts as never),
+ };
+ 
+diff --git a/src/strategies/mcts.ts b/src/strategies/mcts.ts
+index a3bb671..d54b247 100644
+--- a/src/strategies/mcts.ts
++++ b/src/strategies/mcts.ts
+@@ -18,14 +18,29 @@
+  * roll) is deterministic, so near the root open-loop equals closed-loop;
+  * divergence only starts past the next roll, exactly where pooling helps.
+  *
+- * Rollout policy: uniform random (skipping wasted picks when a real
+- * placement exists), truncated after `rolloutDepth` decisions and terminated
+- * by the greedy `evaluate` from greedy.ts as a value estimate — full random
+- * playouts are noisier and slower than a short lookahead plus a
+- * potential-aware evaluation.
++ * Rollout policy (default): *sampled greedy* — each step takes the argmax of
++ * evaluate() over `rolloutMaxActions` randomly sampled legal actions (the
++ * subsampling keeps steps cheap and decorrelates repeated rollouts), with
++ * greedy's reroll-threshold rule. A uniform-random policy (skipping wasted
++ * picks) remains available via `rolloutPolicy: 'random'`.
++ *
++ * Rollout truncation is *phase-consistent*: rollouts run to a round boundary
++ * (`rolloutRounds`) and stop at the pre-roll chance node, then the greedy
++ * `evaluate` scores the leaf. Every leaf sits at the same kind of state
++ * (fresh round, no picks spent), which matters because the evaluation is only
++ * calibrated to compare like states: truncating mid-turn systematically
++ * favors children that kept picks/rerolls in hand (the eval's pool-option
++ * term) over children that committed dice, and truncating right after a roll
++ * inflates whoever just spent their turn. This phase bias is what made
++ * stronger eval weights (TUNED_WEIGHTS) *regress* under the old fixed-step
++ * truncation — the tuned eval leans harder on the pool-option term, so the
++ * bias grew with it.
+  *
+  * Rewards are normalized to [0, 1] via fixed score bounds so the UCB
+- * exploration constant has a stable meaning across the whole game.
++ * exploration constant has a stable meaning across the whole game. With the
++ * low-variance greedy rollouts a small exploration constant works best; the
++ * search then exploits heavily, and an early-stop rule ends the loop once the
++ * visit leader is uncatchable.
+  */
+ import {
+   applyActionMut,
+@@ -40,16 +55,38 @@ import {
+   type RNG,
+   type VariantDef,
+ } from '../engine';
+-import { defaultWeights, evaluate, type Weights } from './greedy';
++import { defaultWeights, evaluate, resolvePendingGreedy, type Weights } from './greedy';
++import { TUNED_WEIGHTS } from './tuned';
+ import type { Strategy } from './types';
+ 
+ export interface MctsOpts {
+   /** Search iterations per decision. */
+   iterations: number;
++  /** When > 0, cap iterations at this × (number of root actions). */
++  iterationsPerAction: number;
+   /** UCB1 exploration constant (rewards are normalized to [0, 1]). */
+   exploration: number;
+-  /** Random-rollout decision steps before falling back to evaluate(). */
++  /** Rollout decision steps before falling back to evaluate(). */
+   rolloutDepth: number;
++  /**
++   * When > 0, rollouts instead run to a *round boundary*: they stop at the
++   * pre-roll chance node once this many rounds have been entered. Every leaf
++   * then sits at the same kind of state (fresh round, no picks spent, full
++   * pool), so evaluate() comparisons are phase-consistent — a mid-turn
++   * truncation systematically overvalues children that kept picks/pool in
++   * hand (the eval's pool-option term) against children that committed dice.
++   */
++  rolloutRounds: number;
++  /** Rollout step policy: uniform random, or one-step greedy argmax. */
++  rolloutPolicy: 'random' | 'greedy';
++  /** Greedy rollouts: argmax over at most this many sampled actions (0 = all). */
++  rolloutMaxActions: number;
++  /**
++   * Greedy rollouts: rounds played greedily before switching to the random
++   * policy for the remainder of the rollout (0 = greedy throughout). Buys
++   * near-horizon accuracy at a fraction of the cost.
++   */
++  rolloutGreedyRounds: number;
+   /** Reward normalization bounds (final scores are roughly 40–250). */
+   minScore: number;
+   maxScore: number;
+@@ -57,13 +94,26 @@ export interface MctsOpts {
+   name?: string;
+ }
+ 
++/**
++ * Best known configuration (seed 11, 100 games: 196.0 ± 35.4 @ ~225ms/game;
++ * held out on seed 777). Sampled-greedy rollouts with the CEM-tuned eval
++ * weights, truncated at a two-round phase-consistent boundary; the
++ * low-variance rollouts want a small exploration constant. The old
++ * random-rollout search is reachable via
++ * `{ rolloutPolicy: 'random', rolloutRounds: 0, exploration: 0.7, weights: {} }`.
++ */
+ const defaults: MctsOpts = {
+-  iterations: 300,
+-  exploration: 0.7,
+-  rolloutDepth: 24,
++  iterations: 100,
++  iterationsPerAction: 0,
++  exploration: 0.1,
++  rolloutDepth: 999,
++  rolloutRounds: 2,
++  rolloutPolicy: 'greedy',
++  rolloutMaxActions: 3,
++  rolloutGreedyRounds: 0,
+   minScore: 40,
+   maxScore: 260,
+-  weights: {},
++  weights: TUNED_WEIGHTS,
+ };
+ 
+ interface TreeNode {
+@@ -102,28 +152,84 @@ export function makeMcts(opts: Partial<MctsOpts> = {}): Strategy {
+ 
+   const norm = (raw: number): number => Math.min(1, Math.max(0, (raw - o.minScore) / span));
+ 
+-  /** Truncated uniform-random rollout, terminated by the greedy evaluation. */
++  /**
++   * One greedy rollout step: argmax of evaluate() over (a sample of) the
++   * legal actions, with greedy's reroll-threshold rule. Returns the successor
++   * state. Leaner than greedy.choose: candidates can be subsampled.
++   */
++  function greedyStep(s: GameState, v: VariantDef, acts: Action[], rng: RNG): GameState {
++    let cand = acts;
++    if (o.rolloutMaxActions > 0 && cand.length > o.rolloutMaxActions) {
++      cand = cand.slice();
++      for (let i = 0; i < o.rolloutMaxActions; i++) {
++        const j = i + Math.floor(rng() * (cand.length - i));
++        [cand[i], cand[j]] = [cand[j], cand[i]];
++      }
++      cand.length = o.rolloutMaxActions;
++    }
++    let canReroll = false;
++    let best: GameState | null = null;
++    let bestVal = -Infinity;
++    for (const a of cand) {
++      if (a.t === 'reroll') {
++        canReroll = true;
++        continue;
++      }
++      let ns = cloneState(s);
++      applyActionMut(ns, v, a);
++      if (ns.pending.length > 0) ns = resolvePendingGreedy(ns, v, w);
++      const val = evaluate(ns, v, w);
++      if (val > bestVal) {
++        bestVal = val;
++        best = ns;
++      }
++    }
++    // Myopic eval never likes a reroll; use greedy's gain threshold.
++    if (canReroll && (!best || bestVal - evaluate(s, v, w) < w.rerollGainThreshold)) {
++      applyActionMut(s, v, { t: 'reroll' });
++      return s;
++    }
++    if (best) return best;
++    applyActionMut(s, v, cand[0]);
++    return s;
++  }
++
++  /** Truncated rollout, terminated by the greedy evaluation. */
+   function rollout(s: GameState, v: VariantDef, rng: RNG): number {
++    const stopRound = o.rolloutRounds > 0 ? s.round + o.rolloutRounds : Infinity;
++    const greedyStopRound =
++      o.rolloutGreedyRounds > 0 ? s.round + o.rolloutGreedyRounds : Infinity;
+     let steps = 0;
+     let guard = 0;
+     while (guard++ < 5000) {
+       const node = getPending(s, v);
+       if (node.kind === 'over') return norm(scoreState(s, v).total);
++      // Truncate *before* resolving a pending roll: evaluating right after a
++      // fresh roll inflates the pool-option term, systematically favoring
++      // children that just spent their turn (endTurn/reroll). Expectimax
++      // avoids the same bias by evaluating chance nodes at the horizon.
++      if (steps >= o.rolloutDepth) break;
+       if (node.kind === 'chance') {
++        if (s.round >= stopRound) break; // phase-consistent leaf (see rolloutRounds)
+         resolveChanceMut(s, v, rng);
+         continue;
+       }
+-      if (steps >= o.rolloutDepth) break;
+       let acts = node.actions;
+-      if (acts.length > 1) {
+-        // Never waste a pick at random while a real placement exists.
+-        const placing = acts.filter((a) => !(a.t === 'pick' && !a.placement));
+-        if (placing.length > 0) acts = placing;
++      if (o.rolloutPolicy === 'greedy' && acts.length > 1 && s.round < greedyStopRound) {
++        s = greedyStep(s, v, acts, rng);
++      } else {
++        if (acts.length > 1) {
++          // Never waste a pick at random while a real placement exists.
++          const placing = acts.filter((a) => !(a.t === 'pick' && !a.placement));
++          if (placing.length > 0) acts = placing;
++        }
++        applyActionMut(s, v, acts[Math.floor(rng() * acts.length)]);
+       }
+-      applyActionMut(s, v, acts[Math.floor(rng() * acts.length)]);
+       steps++;
+     }
+-    return norm(evaluate(s, v, w));
++    // Resolve queued bonus choices greedily so the leaf eval sees their value.
++    const leaf = s.pending.length > 0 ? resolvePendingGreedy(s, v, w) : s;
++    return norm(evaluate(leaf, v, w));
+   }
+ 
+   return {
+@@ -133,8 +239,13 @@ export function makeMcts(opts: Partial<MctsOpts> = {}): Strategy {
+       const v = ctx.variant;
+       const rng = mulberry32(forkSeed(ctx.rng));
+       const root = new Map<string, TreeNode>();
++      // Narrow decisions need fewer samples to separate their children.
++      const iterations =
++        o.iterationsPerAction > 0
++          ? Math.min(o.iterations, o.iterationsPerAction * actions.length)
++          : o.iterations;
+ 
+-      for (let it = 0; it < o.iterations; it++) {
++      for (let it = 0; it < iterations; it++) {
+         const s = cloneState(state);
+         const path: TreeNode[] = [];
+         let children = root;
+@@ -200,6 +311,23 @@ export function makeMcts(opts: Partial<MctsOpts> = {}): Strategy {
+           c.n++;
+           c.w += value;
+         }
++
++        // Early stop: the final choice is the most-visited root child, so
++        // once the leader's visit lead exceeds the remaining budget no
++        // further iteration can change the decision.
++        if ((it & 7) === 7) {
++          let n1 = 0;
++          let n2 = 0;
++          for (const c of root.values()) {
++            if (c.n > n1) {
++              n2 = n1;
++              n1 = c.n;
++            } else if (c.n > n2) {
++              n2 = c.n;
++            }
++          }
++          if (n1 - n2 > iterations - 1 - it) break;
++        }
+       }
+ 
+       // Robust child: most visits, mean reward as tie-break.

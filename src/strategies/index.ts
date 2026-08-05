@@ -55,8 +55,10 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
   mcts: (opts) => makeMcts(opts as never),
   // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
+  // 60k episodes: 242.6 ± 23.2 (seed 11) / 239.9 ± 23.6 (seed 777), 1000 games each.
   'td-net': (opts) => makeTdNet(opts as never),
   // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
+  // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
   'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
 };
 
