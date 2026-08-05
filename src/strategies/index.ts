@@ -5,6 +5,7 @@ import { makeMonteCarlo } from './montecarlo';
 import { makePlanner, type PlannerOpts } from './planner';
 import { makeRandom } from './random';
 import { makeTdNet, makeTdNetEval } from './tdnet';
+import { makeTdNetV2 } from './tdnetv2';
 import { TUNED_WEIGHTS } from './tuned';
 import type { Strategy } from './types';
 
@@ -17,6 +18,7 @@ export * from './expectimax';
 export * from './mcts';
 export * from './planner';
 export * from './tdnet';
+export * from './tdnetv2';
 
 /**
  * Joint CEM over planner knobs + base eval weights (scripts/optimize-planner.ts,
@@ -57,6 +59,8 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
   // 60k episodes: 242.6 ± 23.2 (seed 11) / 239.9 ± 23.6 (seed 777), 1000 games each.
   'td-net': (opts) => makeTdNet(opts as never),
+  // v1 features + phase-gated die-face block (scripts/train-td-v2.ts); see tdnetv2.ts.
+  'td-net-v2': (opts) => makeTdNetV2(opts as never),
   // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
   // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
   'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
