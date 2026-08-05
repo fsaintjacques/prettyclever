@@ -4,6 +4,7 @@
  *   npm run sim -- --strategy greedy --games 500 --seed 1
  *   npm run sim -- --strategy random,greedy,mc --games 100     (comparison)
  *   npm run sim -- --strategy greedy --games 1 --verbose        (turn log)
+ *   npm run sim -- --strategy expectimax --opts '{"depth":4}'   (strategy opts)
  */
 import { getVariant, rating } from '../engine';
 import { makeStrategy } from '../strategies';
@@ -25,9 +26,10 @@ const variant = getVariant(args.variant ?? 'standard');
 const games = Number(args.games ?? 200);
 const seed = Number(args.seed ?? 1);
 const names = (args.strategy ?? 'greedy').split(',');
+const stratOpts = args.opts ? (JSON.parse(args.opts) as Record<string, unknown>) : undefined;
 
 if (args.verbose === 'true') {
-  const strategy = makeStrategy(names[0]);
+  const strategy = makeStrategy(names[0], stratOpts);
   const r = playGame(variant, strategy, seed);
   const s = r.state;
   console.log(`seed ${r.seed} — ${strategy.name}`);
@@ -47,7 +49,7 @@ if (args.verbose === 'true') {
 const fmt = (x: number) => x.toFixed(1).padStart(6);
 
 for (const name of names) {
-  const strategy = makeStrategy(name);
+  const strategy = makeStrategy(name, stratOpts);
   const t0 = performance.now();
   const results = simulate(variant, strategy, { games, seed });
   const dt = performance.now() - t0;
