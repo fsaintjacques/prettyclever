@@ -41,6 +41,7 @@ import {
   createEvalCtx,
   extractFeatures,
   forward,
+  initNet,
   netFromParams,
   paramsFromNet,
   TD_FEATURES,
@@ -49,6 +50,8 @@ import {
   type TdNetParams,
 } from '../src/strategies/tdnet';
 import { chooseByValue2, extractFeaturesV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
+import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
+import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
 
 // ---------------------------------------------------------------------------
 // Feature sets
@@ -58,11 +61,13 @@ interface FeatureSet {
   n: number;
   extract: (s: GameState, v: VariantDef, x: Float64Array) => void;
   choose: (ctx: EvalCtx, s: GameState, v: VariantDef, actions: Action[]) => Action;
+  /** Committed same-feature-set net used as the warm-start teacher for --fresh runs. */
+  teacher: TdNetParams;
 }
 
 const FEATURE_SETS: Record<string, FeatureSet> = {
-  v1: { n: TD_FEATURES, extract: extractFeatures, choose: chooseByValue },
-  v2: { n: TD2_FEATURES, extract: extractFeaturesV2, choose: chooseByValue2 },
+  v1: { n: TD_FEATURES, extract: extractFeatures, choose: chooseByValue, teacher: TDNET_WEIGHTS },
+  v2: { n: TD2_FEATURES, extract: extractFeaturesV2, choose: chooseByValue2, teacher: TDNETV2_WEIGHTS },
 };
 
 // ---------------------------------------------------------------------------
@@ -158,8 +163,16 @@ interface TaskMsg {
   epsilon: number;
 }
 
+/** Warm-start task: play `count` games with the committed teacher net, return MC-target samples. */
+interface WarmTaskMsg {
+  type: 'warm';
+  gameStart: number;
+  count: number;
+}
+
 interface ResultMsg {
   type: 'result';
+  warm: boolean;
   episodes: EpisodeSamples[];
 }
 
@@ -167,19 +180,44 @@ if (!isMainThread) {
   const init = workerData as WorkerInit;
   const fs = FEATURE_SETS[init.features];
   const v = getVariant('standard');
-  let net: Net | null = null;
-  parentPort!.on('message', (msg: TaskMsg | { type: 'exit' }) => {
+  let teacherCtx: EvalCtx | null = null;
+  parentPort!.on('message', (msg: TaskMsg | WarmTaskMsg | { type: 'exit' }) => {
     if (msg.type === 'exit') process.exit(0);
-    const [W1, b1, W2, b2, W3, b3] = msg.tensors;
-    net = { ...msg.dims, W1, b1, W2, b2, W3, b3 };
-    const ctx = createEvalCtx(net);
     const episodes: EpisodeSamples[] = [];
-    for (let i = 0; i < msg.count; i++) {
-      const ep = msg.epStart + i;
-      const rng = mulberry32((init.seed ^ (ep * 2654435761 + 7)) >>> 0);
-      episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda));
+    if (msg.type === 'warm') {
+      teacherCtx ??= createEvalCtx(netFromParams(fs.teacher));
+      const scratch = new Float64Array(fs.n);
+      for (let i = 0; i < msg.count; i++) {
+        const rng = mulberry32((init.seed + 101 + (msg.gameStart + i) * 2654435761) >>> 0);
+        const s = newGame(v);
+        const states: Sparse[] = [];
+        for (;;) {
+          const node = getPending(s, v);
+          if (node.kind === 'over') break;
+          if (node.kind === 'chance') {
+            resolveChanceMut(s, v, rng);
+            continue;
+          }
+          applyActionMut(s, v, fs.choose(teacherCtx, s, v, node.actions));
+          if (s.phase !== 'over') {
+            fs.extract(s, v, scratch);
+            states.push(toSparse(scratch));
+          }
+        }
+        const score = scoreState(s, v).total;
+        episodes.push({ states, targets: states.map(() => score / 300), score });
+      }
+    } else {
+      const [W1, b1, W2, b2, W3, b3] = msg.tensors;
+      const net: Net = { ...msg.dims, W1, b1, W2, b2, W3, b3 };
+      const ctx = createEvalCtx(net);
+      for (let i = 0; i < msg.count; i++) {
+        const ep = msg.epStart + i;
+        const rng = mulberry32((init.seed ^ (ep * 2654435761 + 7)) >>> 0);
+        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda));
+      }
     }
-    parentPort!.postMessage({ type: 'result', episodes } satisfies ResultMsg);
+    parentPort!.postMessage({ type: 'result', warm: msg.type === 'warm', episodes } satisfies ResultMsg);
   });
 }
 
@@ -358,6 +396,10 @@ async function main(): Promise<void> {
     evalGames: num('eval-games', 200),
     evalSeed: num('eval-seed', 90210),
     seed: num('seed', 20260805),
+    fresh: args.fresh === 'true',
+    hidden: num('hidden', 128),
+    warmGames: num('warm-games', 4000),
+    lrWarm: num('lr-warm', 1e-3),
     resume: args.resume,
     checkpoint: args.checkpoint ?? 'checkpoints/td-parallel.json',
     out: args.out ?? 'checkpoints/tdnet-weights-parallel.ts',
@@ -366,24 +408,41 @@ async function main(): Promise<void> {
   if (!fs) throw new Error(`unknown feature set '${cfg.features}' (v1 | v2)`);
   const v = getVariant('standard');
 
-  if (!cfg.resume || !existsSync(cfg.resume)) {
-    throw new Error('the parallel trainer resumes an existing checkpoint; pass --resume <file>');
+  let net: Net;
+  let trainer: Trainer;
+  let episode = 0;
+  let bestMean = -Infinity;
+  let bestParams: TdNetParams | null = null;
+  let warmDone = false;
+  let curve: Checkpoint['curve'] = [];
+  if (cfg.fresh) {
+    net = initNet(fs.n, cfg.hidden, cfg.hidden, mulberry32((cfg.seed ^ 0x5eed) >>> 0));
+    trainer = new Trainer(net, cfg.batch);
+    console.log(
+      `fresh ${fs.n}→${cfg.hidden}→${cfg.hidden}→1 net — warm start: ${cfg.warmGames} games ` +
+        `from the committed ${cfg.features} teacher, then self-play`,
+    );
+  } else {
+    if (!cfg.resume || !existsSync(cfg.resume)) {
+      throw new Error('pass --resume <checkpoint> (or --fresh to initialize a new net)');
+    }
+    const ck = JSON.parse(readFileSync(cfg.resume, 'utf8')) as Checkpoint;
+    if (ck.params.nIn !== fs.n) {
+      throw new Error(`checkpoint nIn ${ck.params.nIn} does not match --features ${cfg.features} (${fs.n})`);
+    }
+    net = netFromParams(ck.params);
+    trainer = new Trainer(net, cfg.batch);
+    trainer.restore(ck.adam);
+    episode = ck.episode;
+    bestMean = ck.bestMean;
+    bestParams = ck.bestParams;
+    warmDone = ck.warmDone;
+    curve = ck.curve;
+    console.log(`resumed ${cfg.resume} @ ep ${episode} (best ${bestMean.toFixed(1)})`);
   }
-  const ck = JSON.parse(readFileSync(cfg.resume, 'utf8')) as Checkpoint;
-  if (ck.params.nIn !== fs.n) {
-    throw new Error(`checkpoint nIn ${ck.params.nIn} does not match --features ${cfg.features} (${fs.n})`);
-  }
-  const net = netFromParams(ck.params);
-  const trainer = new Trainer(net, cfg.batch);
-  trainer.restore(ck.adam);
-  let episode = ck.episode;
-  let bestMean = ck.bestMean;
-  let bestParams = ck.bestParams;
   let bestEpisode = episode;
-  const curve = ck.curve;
   console.log(
-    `resumed ${cfg.resume} @ ep ${episode} (best ${bestMean.toFixed(1)}) — ` +
-      `${cfg.workers} workers × chunk ${cfg.chunk}, features ${cfg.features}, target ${cfg.episodes}, patience ${cfg.patience}`,
+    `${cfg.workers} workers × chunk ${cfg.chunk}, features ${cfg.features}, target ${cfg.episodes}, patience ${cfg.patience}`,
   );
 
   const t0 = performance.now();
@@ -435,7 +494,7 @@ async function main(): Promise<void> {
   const saveCheckpoint = () => {
     const out: Checkpoint = {
       episode,
-      warmDone: true,
+      warmDone,
       params: fullParams(),
       adam: trainer.snapshot(),
       bestMean,
@@ -482,8 +541,16 @@ async function main(): Promise<void> {
       }),
   );
 
-  let dispatched = episode; // next episode index to hand out
+  let dispatched = episode; // next self-play episode index to hand out
+  let warmDispatched = 0;
+  let warmTrained = 0;
   const dispatch = (w: Worker) => {
+    if (!warmDone) {
+      const msg: WarmTaskMsg = { type: 'warm', gameStart: warmDispatched, count: cfg.chunk };
+      warmDispatched += cfg.chunk;
+      w.postMessage(msg);
+      return;
+    }
     const msg: TaskMsg = {
       type: 'task',
       tensors: [net.W1, net.b1, net.W2, net.b2, net.W3, net.b3].map((t) => t.slice()),
@@ -505,11 +572,26 @@ async function main(): Promise<void> {
     for (const w of workers) {
       w.on('message', (msg: ResultMsg) => {
         for (const ep of msg.episodes) {
-          const err = trainer.trainPass(ep.states, ep.targets, lrAt(episode), trainRng);
-          tdErrAvg = tdErrAvg === 0 ? err : tdErrAvg * 0.995 + err * 0.005;
-          episode++;
+          if (msg.warm) {
+            const err = trainer.trainPass(ep.states, ep.targets, cfg.lrWarm, trainRng);
+            tdErrAvg = tdErrAvg === 0 ? err : tdErrAvg * 0.98 + err * 0.02;
+            warmTrained++;
+          } else {
+            const err = trainer.trainPass(ep.states, ep.targets, lrAt(episode), trainRng);
+            tdErrAvg = tdErrAvg === 0 ? err : tdErrAvg * 0.995 + err * 0.005;
+            episode++;
+          }
         }
-        if (episode - lastEvalAt >= cfg.evalEvery) {
+        if (msg.warm) {
+          if (warmTrained % 512 < cfg.chunk) {
+            console.log(`  warm ${warmTrained}/${cfg.warmGames}  tdErr ${tdErrAvg.toFixed(4)}  ${elapsedSec().toFixed(0)}s`);
+          }
+          if (!warmDone && warmTrained >= cfg.warmGames) {
+            warmDone = true;
+            runEval();
+          }
+        }
+        if (warmDone && episode - lastEvalAt >= cfg.evalEvery) {
           lastEvalAt = episode;
           runEval();
         }
