@@ -67,7 +67,9 @@ interface Strategy {
 }
 ```
 
-Register it in `src/strategies/index.ts` and it appears in the CLI and the UI.
+Register it in `src/strategies/index.ts` and it appears in the CLI and the UI —
+variant-agnostic algorithms go in `globalStrategies`, tuned/learned entries go
+under their variant's key in `variantStrategies`.
 
 Current leaderboard (seed 11; fast strategies 1000 games, slow ones 100–200;
 held-out seeds confirm every tuned/learned entry):

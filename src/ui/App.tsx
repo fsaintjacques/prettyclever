@@ -8,7 +8,7 @@ import {
   type GameState,
   type VariantDef,
 } from '../engine';
-import { makeStrategy, strategyRegistry } from '../strategies';
+import { makeStrategy, strategiesFor } from '../strategies';
 import { describeEffect } from './describe';
 import { useGame } from './useGame';
 import { DiceTray } from './components/Dice';
@@ -74,7 +74,7 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
 
   // --- watch-mode bot -----------------------------------------------------
   const [strategyName, setStrategyName] = useState('greedy');
-  const strategy = useMemo(() => makeStrategy(strategyName), [strategyName]);
+  const strategy = useMemo(() => makeStrategy(variant.id, strategyName), [variant.id, strategyName]);
   const botRng = useRef(mulberry32(0xbeef));
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(400);
@@ -226,7 +226,7 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
           {mode === 'watch' && (
             <>
               <select value={strategyName} onChange={(e) => setStrategyName(e.target.value)}>
-                {Object.keys(strategyRegistry).map((k) => (
+                {Object.keys(strategiesFor(variant.id)).map((k) => (
                   <option key={k}>{k}</option>
                 ))}
               </select>

@@ -22,7 +22,7 @@ self.onmessage = (e: MessageEvent<SimRequest>) => {
   const { id, variantId, strategy: strategyName, games, seed } = e.data;
   try {
     const v = getVariant(variantId);
-    const strategy = makeStrategy(strategyName);
+    const strategy = makeStrategy(variantId, strategyName);
     const results: GameResult[] = [];
     const t0 = performance.now();
     let lastPost = t0;

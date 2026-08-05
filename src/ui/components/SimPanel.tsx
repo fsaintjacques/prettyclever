@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { VariantDef } from '../../engine';
-import { strategyRegistry } from '../../strategies';
+import { strategiesFor } from '../../strategies';
 import { DICE_SLOTS } from '../../sim/runner';
 import type { SimStats } from '../../sim/stats';
 import type { SimRequest, SimResponse } from '../simWorker';
@@ -74,7 +74,7 @@ export function SimPanel({ variant }: { variant: VariantDef }) {
         <label className="field">
           Strategy
           <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
-            {Object.keys(strategyRegistry).map((k) => (
+            {Object.keys(strategiesFor(variant.id)).map((k) => (
               <option key={k}>{k}</option>
             ))}
           </select>

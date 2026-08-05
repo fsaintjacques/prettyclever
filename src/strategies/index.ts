@@ -40,38 +40,55 @@ const PLANNER_TUNED: Partial<PlannerOpts> = {
 
 export type StrategyFactory = (opts?: Record<string, unknown>) => Strategy;
 
-/** Registry used by the CLI and the UI. Add experimental strategies here. */
-export const strategyRegistry: Record<string, StrategyFactory> = {
+/** Variant-agnostic algorithms — they read everything they need from VariantDef. */
+const globalStrategies: Record<string, StrategyFactory> = {
   random: () => makeRandom(),
   greedy: (opts) => makeGreedy(opts as never),
-  // CEM-optimized weights (scripts/optimize.ts); held-out mean 166.4 ± 35.5
-  // (seed 777, 1500 games) vs 139.5 for default greedy on the same seeds.
-  'greedy-tuned': (opts) => makeGreedy({ ...TUNED_WEIGHTS, ...opts }, 'greedy-tuned'),
   planner: (opts) => makePlanner(opts as never),
-  'planner-tuned': (opts) => makePlanner({ ...PLANNER_TUNED, ...opts }, 'planner-tuned'),
   mc: (opts) => makeMonteCarlo({ rollouts: 24, policy: 'random', ...opts }),
   'mc-greedy': (opts) => makeMonteCarlo({ rollouts: 8, policy: 'greedy', maxActions: 8, ...opts }),
   expectimax: (opts) => makeExpectimax(opts as never),
-  // Tuned eval transfers cleanly to search: 183.8 ± 35.2 (seed 11, 100 games)
-  // vs 165.1 for expectimax on default weights.
-  'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
   mcts: (opts) => makeMcts(opts as never),
-  // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
-  // 240k episodes: 250.7 ± 22.5 (seed 11) / 250.1 ± 23.7 (seed 777), 1000 games each.
-  'td-net': (opts) => makeTdNet(opts as never),
-  // v1 features + phase-gated die-face block (scripts/train-td-v2.ts).
-  // At an equal 240k-episode budget: 249.7 ± 22.4 / 249.9 ± 23.8 (seeds 11/777)
-  // vs v1's 250.7 / 250.1 — the face features are a wash at this width.
-  'td-net-v2': (opts) => makeTdNetV2(opts as never),
-  // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
-  // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
-  'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
 };
 
-export function makeStrategy(name: string, opts?: Record<string, unknown>): Strategy {
-  const f = strategyRegistry[name];
+/**
+ * Tuned/learned strategies, keyed by the variant their weights or feature
+ * extraction were trained on. A future variant registers its own block here.
+ */
+const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
+  'thats-pretty-clever': {
+    // CEM-optimized weights (scripts/optimize.ts); held-out mean 166.4 ± 35.5
+    // (seed 777, 1500 games) vs 139.5 for default greedy on the same seeds.
+    'greedy-tuned': (opts) => makeGreedy({ ...TUNED_WEIGHTS, ...opts }, 'greedy-tuned'),
+    'planner-tuned': (opts) => makePlanner({ ...PLANNER_TUNED, ...opts }, 'planner-tuned'),
+    // Tuned eval transfers cleanly to search: 183.8 ± 35.2 (seed 11, 100 games)
+    // vs 165.1 for expectimax on default weights.
+    'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
+    // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
+    // 240k episodes: 250.7 ± 22.5 (seed 11) / 250.1 ± 23.7 (seed 777), 1000 games each.
+    'td-net': (opts) => makeTdNet(opts as never),
+    // v1 features + phase-gated die-face block (scripts/train-td-v2.ts).
+    // At an equal 240k-episode budget: 249.7 ± 22.4 / 249.9 ± 23.8 (seeds 11/777)
+    // vs v1's 250.7 / 250.1 — the face features are a wash at this width.
+    'td-net-v2': (opts) => makeTdNetV2(opts as never),
+    // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
+    // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
+    'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
+  },
+};
+
+/** Merged view for the CLI and UI: global algorithms + this variant's tuned entries. */
+export function strategiesFor(variantId: string): Record<string, StrategyFactory> {
+  return { ...globalStrategies, ...variantStrategies[variantId] };
+}
+
+export function makeStrategy(variantId: string, name: string, opts?: Record<string, unknown>): Strategy {
+  const reg = strategiesFor(variantId);
+  const f = reg[name];
   if (!f) {
-    throw new Error(`unknown strategy '${name}' (available: ${Object.keys(strategyRegistry).join(', ')})`);
+    throw new Error(
+      `unknown strategy '${name}' for variant '${variantId}' (available: ${Object.keys(reg).join(', ')})`,
+    );
   }
   return f(opts);
 }

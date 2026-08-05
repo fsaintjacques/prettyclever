@@ -29,7 +29,7 @@ const names = (args.strategy ?? 'greedy').split(',');
 const stratOpts = args.opts ? (JSON.parse(args.opts) as Record<string, unknown>) : undefined;
 
 if (args.verbose === 'true') {
-  const strategy = makeStrategy(names[0], stratOpts);
+  const strategy = makeStrategy(variant.id, names[0], stratOpts);
   const r = playGame(variant, strategy, seed);
   const s = r.state;
   console.log(`seed ${r.seed} — ${strategy.name}`);
@@ -49,7 +49,7 @@ if (args.verbose === 'true') {
 const fmt = (x: number) => x.toFixed(1).padStart(6);
 
 for (const name of names) {
-  const strategy = makeStrategy(name, stratOpts);
+  const strategy = makeStrategy(variant.id, name, stratOpts);
   const t0 = performance.now();
   const results = simulate(variant, strategy, { games, seed });
   const dt = performance.now() - t0;
