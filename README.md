@@ -19,7 +19,7 @@ docs/RULES.md        annotated rules + exact score-sheet data (engine ground tru
 src/engine/          pure game engine, no dependencies
   types.ts           core types; the decision-process contract
   areas.ts           reusable area factories (cross grid, threshold/write/ascend tracks)
-  variants/          sheet definitions; standard.ts is the base game
+  variants/          sheet definitions; thats-pretty-clever.ts is the base game
   game.ts            solo state machine: getPending / applyAction / resolveChance
   score.ts           scoring + rating table
 src/strategies/      random, greedy (tunable weights), flat Monte-Carlo
@@ -35,15 +35,15 @@ The solo game is modeled as an explicit sequential decision process so that any
 algorithm can drive it:
 
 ```ts
-import { standard, newGame, getPending, applyAction, resolveChance, mulberry32 } from './src/engine';
+import { thatsPrettyClever, newGame, getPending, applyAction, resolveChance, mulberry32 } from './src/engine';
 
 const rng = mulberry32(seed);
-let s = newGame(standard);
+let s = newGame(thatsPrettyClever);
 for (;;) {
-  const node = getPending(s, standard);
+  const node = getPending(s, thatsPrettyClever);
   if (node.kind === 'over') break;
-  if (node.kind === 'chance') { s = resolveChance(s, standard, rng); continue; }
-  s = applyAction(s, standard, choose(node.actions)); // your policy here
+  if (node.kind === 'chance') { s = resolveChance(s, thatsPrettyClever, rng); continue; }
+  s = applyAction(s, thatsPrettyClever, choose(node.actions)); // your policy here
 }
 ```
 
@@ -107,7 +107,7 @@ dice) is the natural next instrument to measure what actually remains.
 A variant is data: dice colors, round bonuses, and a list of areas built from
 the factories in `src/engine/areas.ts` (cross-grids with group bonuses,
 threshold tracks, write tracks with multipliers, ascending tracks with a reset
-value). See `src/engine/variants/standard.ts` for the complete standard sheet;
+value). See `src/engine/variants/thats-pretty-clever.ts` for the complete base sheet;
 adding *Twice as Clever* / *Clever Cubed* means writing a similar file (plus a
 new area factory if a mechanic is genuinely new) and registering it in
 `src/engine/variants/index.ts`. The UI renders sheets generically from the

@@ -26,7 +26,7 @@
  *
  * Budget: pop 32 x 400 games x 14 gens ~ 180k games ~ 2-3 min at ~0.7 ms/game.
  */
-import { mulberry32, standard } from '../src/engine';
+import { mulberry32, thatsPrettyClever } from '../src/engine';
 import {
   defaultPlannerOpts,
   defaultWeights,
@@ -130,7 +130,7 @@ function fmt(x: Vec): string {
 
 /** Mean score over `games` paired games starting at seed base. */
 function fitness(x: Vec, games: number, seed: number): number {
-  const results = simulate(standard, makePlanner(toOpts(x)), { games, seed });
+  const results = simulate(thatsPrettyClever, makePlanner(toOpts(x)), { games, seed });
   return results.reduce((a, r) => a + r.score.total, 0) / games;
 }
 
@@ -226,7 +226,7 @@ for (const f of finalists) {
   let ms = 0;
   for (const seed of CONFIRM_SEEDS) {
     const tc0 = Date.now();
-    const st = computeStats(standard, simulate(standard, f.s, { games: CONFIRM_GAMES, seed }));
+    const st = computeStats(thatsPrettyClever, simulate(thatsPrettyClever, f.s, { games: CONFIRM_GAMES, seed }));
     ms += Date.now() - tc0;
     sum += st.mean;
     parts.push(`seed ${seed}: ${st.mean.toFixed(1)} ± ${st.std.toFixed(1)} (p50 ${st.p50}, p90 ${st.p90})`);

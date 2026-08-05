@@ -3,7 +3,7 @@ import {
   getPending,
   mulberry32,
   scoreState,
-  standard,
+  variants,
   type Action,
   type GameState,
   type VariantDef,
@@ -308,14 +308,30 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
 
 export function App() {
   const [mode, setMode] = useState<Mode>('play');
-  const variant = standard;
+  // Single source of truth for the selected variant; everything below receives it as a prop.
+  const variantIds = Object.keys(variants);
+  const [variantId, setVariantId] = useState(variantIds[0]);
+  const variant = variants[variantId];
   return (
     <div className="app">
       <header className="topbar">
         <div className="wordmark">
           Clever Lab<span className="fox-dot">.</span>
-          <small>That’s Pretty Clever — solo strategy workbench</small>
+          <small>{variant.name} — solo strategy workbench</small>
         </div>
+        {variantIds.length > 1 && (
+          <select
+            value={variantId}
+            onChange={(e) => setVariantId(e.target.value)}
+            aria-label="game variant"
+          >
+            {variantIds.map((id) => (
+              <option key={id} value={id}>
+                {variants[id].name}
+              </option>
+            ))}
+          </select>
+        )}
         <nav className="tabs" role="tablist">
           {(['play', 'watch', 'sim'] as const).map((m) => (
             <button
@@ -330,7 +346,11 @@ export function App() {
         </nav>
       </header>
 
-      {mode === 'sim' ? <SimPanel variant={variant} /> : <GameView key={mode} mode={mode} variant={variant} />}
+      {mode === 'sim' ? (
+        <SimPanel key={variant.id} variant={variant} />
+      ) : (
+        <GameView key={`${mode}:${variant.id}`} mode={mode} variant={variant} />
+      )}
 
       <footer className="credits">
         Game design by Wolfgang Warsch, published by Schmidt Spiele. This is an unofficial

@@ -109,8 +109,8 @@ const purple = ascendTrackArea({
   },
 });
 
-export const standard: VariantDef = {
-  id: 'standard',
+export const thatsPrettyClever: VariantDef = {
+  id: 'thats-pretty-clever',
   name: "That's Pretty Clever (Ganz schön clever)",
   colors: ['white', 'yellow', 'blue', 'green', 'orange', 'purple'],
   wild: 'white',

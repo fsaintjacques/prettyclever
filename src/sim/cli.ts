@@ -22,7 +22,7 @@ function parseArgs(argv: string[]): Record<string, string> {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const variant = getVariant(args.variant ?? 'standard');
+const variant = getVariant(args.variant ?? 'thats-pretty-clever');
 const games = Number(args.games ?? 200);
 const seed = Number(args.seed ?? 1);
 const names = (args.strategy ?? 'greedy').split(',');

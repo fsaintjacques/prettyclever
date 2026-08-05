@@ -179,7 +179,7 @@ interface ResultMsg {
 if (!isMainThread) {
   const init = workerData as WorkerInit;
   const fs = FEATURE_SETS[init.features];
-  const v = getVariant('standard');
+  const v = getVariant('thats-pretty-clever');
   let teacherCtx: EvalCtx | null = null;
   parentPort!.on('message', (msg: TaskMsg | WarmTaskMsg | { type: 'exit' }) => {
     if (msg.type === 'exit') process.exit(0);
@@ -406,7 +406,7 @@ async function main(): Promise<void> {
   };
   const fs = FEATURE_SETS[cfg.features];
   if (!fs) throw new Error(`unknown feature set '${cfg.features}' (v1 | v2)`);
-  const v = getVariant('standard');
+  const v = getVariant('thats-pretty-clever');
 
   let net: Net;
   let trainer: Trainer;

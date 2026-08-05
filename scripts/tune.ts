@@ -6,7 +6,7 @@
  * Edit the `grid` below to compare weight sets. Same seeds are used for every
  * candidate, so differences are paired (lower variance comparisons).
  */
-import { standard } from '../src/engine';
+import { thatsPrettyClever } from '../src/engine';
 import { makeGreedy, type Weights } from '../src/strategies';
 import { simulate } from '../src/sim/runner';
 import { computeStats } from '../src/sim/stats';
@@ -24,7 +24,7 @@ const grid: { name: string; w: Partial<Weights> }[] = [
 ];
 
 for (const g of grid) {
-  const st = computeStats(standard, simulate(standard, makeGreedy(g.w), { games, seed }));
+  const st = computeStats(thatsPrettyClever, simulate(thatsPrettyClever, makeGreedy(g.w), { games, seed }));
   const areas = Object.entries(st.meanAreas)
     .map(([k, x]) => `${k.slice(0, 2)} ${x.toFixed(0).padStart(2)}`)
     .join('  ');

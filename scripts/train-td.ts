@@ -103,7 +103,7 @@ const cfg = {
   out: args.out ?? 'src/strategies/tdnet-weights.ts',
 };
 
-const v = getVariant('standard');
+const v = getVariant('thats-pretty-clever');
 
 // ---------------------------------------------------------------------------
 // Adam trainer (MSE on V, backprop through the 2-hidden-layer MLP)

@@ -8,14 +8,14 @@ import {
   newGame,
   resolveChanceMut,
   scoreState,
-  standard,
+  thatsPrettyClever,
   type Action,
   type GameState,
 } from '../src/engine';
 import { makeRandom } from '../src/strategies';
 import { playGame } from '../src/sim/runner';
 
-const v = standard;
+const v = thatsPrettyClever;
 const die = (color: string) => v.colors.indexOf(color as never);
 
 /** Fresh round-1 state in the pick phase with chosen faces (order: white yellow blue green orange purple). */

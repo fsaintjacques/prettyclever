@@ -1,8 +1,8 @@
 import type { VariantDef } from '../types';
-import { standard } from './standard';
+import { thatsPrettyClever } from './thats-pretty-clever';
 
 export const variants: Record<string, VariantDef> = {
-  standard,
+  [thatsPrettyClever.id]: thatsPrettyClever,
 };
 
 export function getVariant(id: string): VariantDef {
@@ -11,4 +11,4 @@ export function getVariant(id: string): VariantDef {
   return v;
 }
 
-export { standard };
+export { thatsPrettyClever };

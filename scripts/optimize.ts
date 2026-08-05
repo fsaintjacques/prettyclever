@@ -25,7 +25,7 @@
  *
  * Budget: pop 26 x 300 games x 16 gens ~ 125k games ~ 1.5 min at ~0.7 ms/game.
  */
-import { mulberry32, standard } from '../src/engine';
+import { mulberry32, thatsPrettyClever } from '../src/engine';
 import { defaultWeights, makeGreedy, type Weights } from '../src/strategies';
 import { simulate } from '../src/sim/runner';
 import { computeStats } from '../src/sim/stats';
@@ -82,7 +82,7 @@ function fmt(w: Weights): string {
 
 /** Mean score over `games` paired games starting at seed base. */
 function fitness(w: Weights, games: number, seed: number): number {
-  const results = simulate(standard, makeGreedy(w), { games, seed });
+  const results = simulate(thatsPrettyClever, makeGreedy(w), { games, seed });
   return results.reduce((a, r) => a + r.score.total, 0) / games;
 }
 
@@ -151,7 +151,7 @@ console.log(`\nheld-out confirmation: seed ${CONFIRM_SEED}, ${CONFIRM_GAMES} gam
 let winner = finalists[0];
 let winnerStats = { mean: -Infinity, std: 0 };
 for (const f of finalists) {
-  const st = computeStats(standard, simulate(standard, makeGreedy(f.w), { games: CONFIRM_GAMES, seed: CONFIRM_SEED }));
+  const st = computeStats(thatsPrettyClever, simulate(thatsPrettyClever, makeGreedy(f.w), { games: CONFIRM_GAMES, seed: CONFIRM_SEED }));
   console.log(`  ${f.name.padEnd(10)} mean ${st.mean.toFixed(1)} ± ${st.std.toFixed(1)}  p50 ${st.p50}  p90 ${st.p90}`);
   if (f.name !== 'default' && st.mean > winnerStats.mean) {
     winner = f;
