@@ -106,6 +106,13 @@ export interface AreaDef {
   bonusPlacement(cells: number[], kind: 'cross' | 'write', value?: number): Placement | null;
   /** Placements a free-mark bonus ({ t: 'free' }, colored ?) may choose ([] when full). */
   freePlacements(cells: number[]): Placement[];
+  /**
+   * Row colors of a silver grid, top to bottom (set by silverGridArea only).
+   * Its presence flags the area as a platter-chain target: picks placed here
+   * mark the dice they move to the platter (silverMark effects), and these
+   * rows map a die color to its row index.
+   */
+  silverRows?: DieColor[];
   ui: AreaUi;
 }
 
@@ -175,8 +182,12 @@ export interface GameState {
 }
 
 export type Action =
-  /** Resolve the head of the pending-bonus queue: `cell` for crossAny, `option` for choice. */
-  | { t: 'bonus'; cell?: number; option?: number }
+  /**
+   * Resolve the head of the pending-bonus queue: `cell` for crossAny,
+   * `option` for choice, `placement` for free/silverMark (those need the
+   * cell AND the value written — circle vs cross, a written number, ...).
+   */
+  | { t: 'bonus'; cell?: number; option?: number; placement?: Placement }
   | { t: 'reroll' }
   /** Return a platter die to the pool (preRoll); it joins the next roll. */
   | { t: 'return'; die: number }

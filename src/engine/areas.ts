@@ -346,6 +346,7 @@ export function silverGridArea(cfg: SilverGridCfg): AreaDef {
     label: cfg.label,
     colors: cfg.colors,
     size,
+    silverRows: cfg.rows, // marks this area as a platter-chain target (see AreaDef)
     init: () => Array(size).fill(0),
     effectiveValue: cfg.effectiveValue ?? defaultValue,
     placements(cells, value) {

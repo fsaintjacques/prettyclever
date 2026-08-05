@@ -459,7 +459,8 @@ describe('stage-1 state fields', () => {
   it('newGame initializes returns, barUnlocks and returnsUsed', () => {
     const s = newGame(thatsPrettyClever);
     expect(s.returns).toBe(0);
-    expect(s.barUnlocks).toEqual({ reroll: 0, plus1: 0, return: 0 });
+    // The round-1 reroll bonus already circles the first reroll-bar slot.
+    expect(s.barUnlocks).toEqual({ reroll: 1, plus1: 0, return: 0 });
     expect(s.stats.returnsUsed).toBe(0);
   });
 
