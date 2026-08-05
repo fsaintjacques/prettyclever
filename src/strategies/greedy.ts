@@ -81,6 +81,10 @@ function effectEV(e: Effect, w: Weights): number {
       return w.crossEV;
     case 'writeNext':
       return e.value;
+    case 'return':
+    case 'free':
+    case 'silverMark':
+      return 0; // Twice-as-Clever effects: no shaping yet (variant-specific eval is follow-up work)
     case 'choice':
       return Math.max(...e.options.map((o) => effectEV(o, w)));
   }

@@ -86,6 +86,10 @@ function actionKey(a: Action): string {
       return 'e';
     case 'passiveSkip':
       return 'ps';
+    case 'return':
+      return `rt:${a.die}`;
+    case 'proceed':
+      return 'go';
     case 'pick':
     case 'plus1':
     case 'passivePick': {

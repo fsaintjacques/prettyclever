@@ -134,6 +134,12 @@ export const thatsPrettyClever: VariantDef = {
     null,
     null,
   ],
+  bars: {
+    reroll: { size: 7, endBonus: null },
+    plus1: { size: 7, endBonus: null },
+    return: { size: 0, endBonus: null }, // this sheet has no return bar
+  },
+  plus1Scope: 'turn',
   areas: [yellow, blue, green, orange, purple],
   rating: [
     { min: 281, label: "You're so clever!" },

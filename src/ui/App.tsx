@@ -21,6 +21,7 @@ type Mode = 'play' | 'watch' | 'sim';
 function phaseLabel(s: GameState, v: VariantDef): string {
   switch (s.phase) {
     case 'roll':
+    case 'preRoll':
     case 'pick':
       return `Active turn — pick ${Math.min(s.picks + 1, v.picksPerTurn)} of ${v.picksPerTurn}`;
     case 'endTurn':

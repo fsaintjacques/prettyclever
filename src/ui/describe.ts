@@ -9,12 +9,18 @@ export function describeEffect(e: Effect): string {
       return '↻ re-roll';
     case 'plus1':
       return '+1 die';
+    case 'return':
+      return '↩ return';
     case 'crossAny':
       return `X in ${e.area}`;
     case 'crossNext':
       return `X next in ${e.area}`;
     case 'writeNext':
       return `${e.value} in ${e.area}`;
+    case 'free':
+      return `? in ${e.area}`;
+    case 'silverMark':
+      return `silver ${e.value}${e.row ? ` (${e.row} row)` : ' (any row)'}`;
     case 'choice':
       return e.options.map(describeEffect).join(' / ');
   }
@@ -48,6 +54,10 @@ export function describeAction(s: GameState, v: VariantDef, a: Action): string {
       return 'forfeits the roll';
     case 'reroll':
       return 're-rolls';
+    case 'return':
+      return `returns ${die(a.die)} to the pool`;
+    case 'proceed':
+      return 'rolls on';
     case 'plus1':
       return `+1: ${die(a.die)} → ${cellDesc(v, a.placement.area, a.placement.cell, a.placement.value)}`;
     case 'endTurn':

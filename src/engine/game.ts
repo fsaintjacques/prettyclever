@@ -38,11 +38,13 @@ export function newGame(v: VariantDef): GameState {
     picks: 0,
     rerolls: 0,
     plus1: 0,
+    returns: 0,
     plus1Used: Array(n).fill(false),
+    barUnlocks: { reroll: 0, plus1: 0, return: 0 },
     pending: [],
     areas: {},
     foxes: 0,
-    stats: { rerollsUsed: 0, plus1Spent: 0, skips: 0, bonusesLost: 0 },
+    stats: { rerollsUsed: 0, plus1Spent: 0, returnsUsed: 0, skips: 0, bonusesLost: 0 },
   };
   for (const a of v.areas) s.areas[a.id] = a.init();
   grantRoundBonus(s, v);
@@ -55,6 +57,7 @@ export function cloneState(s: GameState): GameState {
     faces: s.faces.slice(),
     loc: s.loc.slice(),
     plus1Used: s.plus1Used.slice(),
+    barUnlocks: { ...s.barUnlocks },
     pending: s.pending.slice(), // effects are immutable, sharing refs is fine
     areas: Object.fromEntries(Object.entries(s.areas).map(([k, cells]) => [k, cells.slice()])),
     stats: { ...s.stats },
