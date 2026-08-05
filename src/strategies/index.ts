@@ -1,5 +1,6 @@
 import { makeExpectimax } from './expectimax';
 import { makeGreedy } from './greedy';
+import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
 import { makeRandom } from './random';
 import { TUNED_WEIGHTS } from './tuned';
@@ -11,6 +12,7 @@ export * from './greedy';
 export * from './montecarlo';
 export * from './tuned';
 export * from './expectimax';
+export * from './mcts';
 
 export type StrategyFactory = (opts?: Record<string, unknown>) => Strategy;
 
@@ -24,6 +26,7 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   mc: (opts) => makeMonteCarlo({ rollouts: 24, policy: 'random', ...opts }),
   'mc-greedy': (opts) => makeMonteCarlo({ rollouts: 8, policy: 'greedy', maxActions: 8, ...opts }),
   expectimax: (opts) => makeExpectimax(opts as never),
+  mcts: (opts) => makeMcts(opts as never),
 };
 
 export function makeStrategy(name: string, opts?: Record<string, unknown>): Strategy {
