@@ -958,6 +958,20 @@ button:focus-visible {
   color: var(--ink-2);
 }
 
+.chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.chart-head h4 {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .dice-multiples {
   display: flex;
   flex-wrap: wrap;

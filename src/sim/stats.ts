@@ -18,8 +18,11 @@ export interface SimStats {
   meanFoxes: number;
   meanFoxPoints: number;
   ratingCounts: { label: string; count: number }[];
-  /** Average times per game each die color was played at each face (1–6). */
-  diceUsed: { color: string; counts: number[] }[];
+  /**
+   * Average times per game each die color was played at each face (1–6):
+   * `counts` = all turn slots combined, `slots[k]` = per slot (see DICE_SLOTS).
+   */
+  diceUsed: { color: string; counts: number[]; slots: number[][] }[];
 }
 
 export function computeStats(v: VariantDef, results: GameResult[]): SimStats {
@@ -47,13 +50,16 @@ export function computeStats(v: VariantDef, results: GameResult[]): SimStats {
     ratingCounts.set(label, (ratingCounts.get(label) ?? 0) + 1);
   }
 
-  const diceUsed = v.colors.map((color, die) => ({
-    color,
-    counts: Array.from(
-      { length: 6 },
-      (_, f) => results.reduce((acc, r) => acc + (r.diceUsed?.[die]?.[f] ?? 0), 0) / n,
-    ),
-  }));
+  const diceUsed = v.colors.map((color, die) => {
+    const slots = Array.from({ length: 5 }, (_, slot) =>
+      Array.from(
+        { length: 6 },
+        (_, f) => results.reduce((acc, r) => acc + (r.diceUsed?.[slot]?.[die]?.[f] ?? 0), 0) / n,
+      ),
+    );
+    const counts = Array.from({ length: 6 }, (_, f) => slots.reduce((a, s) => a + s[f], 0));
+    return { color, counts, slots };
+  });
 
   return {
     games: n,

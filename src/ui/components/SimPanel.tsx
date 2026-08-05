@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { VariantDef } from '../../engine';
 import { strategyRegistry } from '../../strategies';
+import { DICE_SLOTS } from '../../sim/runner';
 import type { SimStats } from '../../sim/stats';
 import type { SimRequest, SimResponse } from '../simWorker';
 import { DiceHistogram } from './DiceHistogram';
@@ -32,6 +33,7 @@ export function SimPanel({ variant }: { variant: VariantDef }) {
   const [seed, setSeed] = useState(1);
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
+  const [diceSlot, setDiceSlot] = useState<'all' | number>('all');
   const workerRef = useRef<Worker | null>(null);
   const nextId = useRef(1);
 
@@ -208,8 +210,29 @@ export function SimPanel({ variant }: { variant: VariantDef }) {
 
           {current.stats.diceUsed && (
             <div className="chart-block">
-              <h4>Dice played per game, by color and face</h4>
-              <DiceHistogram data={current.stats.diceUsed} />
+              <div className="chart-head">
+                <h4>Dice played per game, by color and face</h4>
+                <select
+                  value={String(diceSlot)}
+                  onChange={(e) =>
+                    setDiceSlot(e.target.value === 'all' ? 'all' : Number(e.target.value))
+                  }
+                  aria-label="turn slot filter"
+                >
+                  <option value="all">All turns</option>
+                  {DICE_SLOTS.map((label, i) => (
+                    <option key={label} value={i}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <DiceHistogram
+                data={current.stats.diceUsed.map((d) => ({
+                  color: d.color,
+                  counts: diceSlot === 'all' ? d.counts : (d.slots?.[diceSlot] ?? d.counts),
+                }))}
+              />
             </div>
           )}
 

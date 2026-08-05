@@ -16,16 +16,23 @@ export interface GameResult {
   score: ScoreBreakdown;
   state: GameState;
   decisions: number;
-  /** Marks made with an actual die (picks, +1s, passive picks — not bonuses), as [dieIndex][face-1] counts. */
-  diceUsed: number[][];
+  /**
+   * Marks made with an actual die (not bonus cascades), split by turn slot:
+   * [slot][dieIndex][face-1], slots = active pick 1, 2, 3, passive pick, +1.
+   */
+  diceUsed: number[][][];
 }
+
+export const DICE_SLOTS = ['Pick 1', 'Pick 2', 'Pick 3', 'Passive', '+1'] as const;
 
 /** Play one seeded game to completion. */
 export function playGame(v: VariantDef, strategy: Strategy, seed: number): GameResult {
   const rng = mulberry32(seed);
   const s = newGame(v);
   const ctx = { variant: v, rng };
-  const diceUsed = v.colors.map(() => Array(6).fill(0) as number[]);
+  const diceUsed = Array.from({ length: DICE_SLOTS.length }, () =>
+    v.colors.map(() => Array(6).fill(0) as number[]),
+  );
   let decisions = 0;
   let guard = 0;
   for (;;) {
@@ -37,12 +44,10 @@ export function playGame(v: VariantDef, strategy: Strategy, seed: number): GameR
       continue;
     }
     const a = strategy.choose(s, node.actions, ctx);
-    if (
-      (a.t === 'pick' && a.placement) ||
-      a.t === 'plus1' ||
-      a.t === 'passivePick'
-    ) {
-      diceUsed[a.die][s.faces[a.die] - 1]++;
+    if ((a.t === 'pick' && a.placement) || a.t === 'plus1' || a.t === 'passivePick') {
+      const slot =
+        a.t === 'pick' ? Math.min(s.picks, 2) : a.t === 'passivePick' ? 3 : 4;
+      diceUsed[slot][a.die][s.faces[a.die] - 1]++;
     }
     applyActionMut(s, v, a);
     decisions++;
