@@ -35,6 +35,32 @@ function phaseLabel(s: GameState, v: VariantDef): string {
   }
 }
 
+/** Seed input + New game: empty seed = random, a number = reproducible game. */
+function NewGame({ reset }: { reset: (seed?: number) => void }) {
+  const [seed, setSeed] = useState('');
+  const start = () => {
+    const n = Number(seed.trim());
+    reset(seed.trim() !== '' && Number.isFinite(n) ? n >>> 0 : undefined);
+  };
+  return (
+    <>
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="seed (random)"
+        value={seed}
+        onChange={(e) => setSeed(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && start()}
+        style={{ width: 110 }}
+        aria-label="seed for the next game"
+      />
+      <button className="btn subtle" onClick={start}>
+        New game
+      </button>
+    </>
+  );
+}
+
 function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantDef }) {
   const session = useGame(variant);
   const { state } = session;
@@ -158,12 +184,11 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
           )
         )}
 
+        <div className="hint status-line">
+          <strong>Round {state.round}/{variant.rounds}</strong> · {phaseLabel(state, variant)}
+          {hint && <> — {hint}</>}
+        </div>
         <div className="controls" style={{ marginBottom: 12 }}>
-          <span className="hint" style={{ marginRight: 'auto' }}>
-            <strong>Round {state.round}/{variant.rounds}</strong> · {phaseLabel(state, variant)}
-            {hint && <> — {hint}</>}
-          </span>
-
           {mode === 'play' && (
             <>
               {rerollAction && (
@@ -194,9 +219,7 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
               <button className="btn subtle" onClick={session.undo} disabled={!session.canUndo}>
                 Undo
               </button>
-              <button className="btn subtle" onClick={() => session.reset()}>
-                New game
-              </button>
+              <NewGame reset={session.reset} />
             </>
           )}
 
@@ -243,9 +266,7 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
               >
                 Finish
               </button>
-              <button className="btn subtle" onClick={() => session.reset()}>
-                New game
-              </button>
+              <NewGame reset={session.reset} />
             </>
           )}
         </div>

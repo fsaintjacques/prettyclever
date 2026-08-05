@@ -722,6 +722,12 @@ button:focus-visible {
   font-size: 13.5px;
 }
 
+/* Status text lives on its own line so the control buttons never shift. */
+.status-line {
+  min-height: 1.5em;
+  margin-bottom: 8px;
+}
+
 .banner {
   border: 1px solid color-mix(in srgb, var(--fox) 55%, var(--line));
   background: color-mix(in srgb, var(--fox) 12%, var(--sheet));
