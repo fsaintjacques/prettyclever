@@ -2,7 +2,7 @@ import { makeExpectimax } from './expectimax';
 import { makeGreedy } from './greedy';
 import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
-import { makePlanner } from './planner';
+import { makePlanner, type PlannerOpts } from './planner';
 import { makeRandom } from './random';
 import { TUNED_WEIGHTS } from './tuned';
 import type { Strategy } from './types';
@@ -16,6 +16,24 @@ export * from './expectimax';
 export * from './mcts';
 export * from './planner';
 
+/**
+ * Joint CEM over planner knobs + base eval weights (scripts/optimize-planner.ts,
+ * 14 gens, pop 32, 400 paired games per candidate). Held-out mean 169.7
+ * (seeds 777 & 424242, 1000 games each) vs 157.0 for default planner and
+ * 165.7 for greedy-tuned on the same paired seeds.
+ */
+const PLANNER_TUNED: Partial<PlannerOpts> = {
+  weights: {
+    reroll: 3.019, foxEV: 5.014, groupPotential: 0.047, crossEV: 4.608,
+    purpleSlotEV: 0.09, orangeSlotEVPerMult: 0.935, blueShaping: 7.188,
+    greenShaping: 4.165, poolDieEV: 9.811,
+  },
+  purpleBarW: 0.036, purpleSixBonus: 7.014, orangeMultW: 0.045, earlyShaping: 1.401,
+  plus1Early: 14.21, plus1Mid: 8.743, plus1Late: 7.553,
+  rerollBase: 2.37, rerollPerDie: 0.388, rerollLate: 1.456,
+  yellowShapeW: 0.015, poolScale: 0.947, wildBonus: 1.534,
+};
+
 export type StrategyFactory = (opts?: Record<string, unknown>) => Strategy;
 
 /** Registry used by the CLI and the UI. Add experimental strategies here. */
@@ -26,6 +44,7 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   // (seed 777, 1500 games) vs 139.5 for default greedy on the same seeds.
   'greedy-tuned': (opts) => makeGreedy({ ...TUNED_WEIGHTS, ...opts }, 'greedy-tuned'),
   planner: (opts) => makePlanner(opts as never),
+  'planner-tuned': (opts) => makePlanner({ ...PLANNER_TUNED, ...opts }, 'planner-tuned'),
   mc: (opts) => makeMonteCarlo({ rollouts: 24, policy: 'random', ...opts }),
   'mc-greedy': (opts) => makeMonteCarlo({ rollouts: 8, policy: 'greedy', maxActions: 8, ...opts }),
   expectimax: (opts) => makeExpectimax(opts as never),
