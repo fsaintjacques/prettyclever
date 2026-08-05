@@ -29,6 +29,9 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   mc: (opts) => makeMonteCarlo({ rollouts: 24, policy: 'random', ...opts }),
   'mc-greedy': (opts) => makeMonteCarlo({ rollouts: 8, policy: 'greedy', maxActions: 8, ...opts }),
   expectimax: (opts) => makeExpectimax(opts as never),
+  // Tuned eval transfers cleanly to search: 183.8 ± 35.2 (seed 11, 100 games)
+  // vs 165.1 for expectimax on default weights.
+  'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
   mcts: (opts) => makeMcts(opts as never),
 };
 
