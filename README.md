@@ -69,24 +69,29 @@ interface Strategy {
 
 Register it in `src/strategies/index.ts` and it appears in the CLI and the UI.
 
-Current leaderboard (seed 11; fast strategies 400–1000 games, slow ones 100–200):
+Current leaderboard (seed 11; fast strategies 1000 games, slow ones 100–200;
+held-out seeds confirm every tuned/learned entry):
 
 | strategy | mean ± std | p90 | ms/game | idea |
 |---|---|---|---|---|
+| **td-net** | **242.6 ± 23.2** | 271 | 9 | TD(λ) self-play value network, afterstate argmax (`scripts/train-td.ts`) |
+| expectimax-net | ~237 | 269 | ~3300 | depth-3 expectimax with the TD net as leaf — no longer beats raw td-net |
+| expectimax-tuned | 183.8 ± 35.2 | 230 | 307 | expectimax with CEM weights as leaf eval |
+| planner-tuned | 170.0 ± 36.9 | 222 | 0.9 | joint CEM over planner knobs + eval weights |
 | mcts | 169.4 ± 25.5 | 204 | 211 | UCT, open-loop chance sampling, truncated rollouts + eval leaf |
 | greedy-tuned | 165.9 ± 36.6 | 224 | 0.8 | greedy with CEM-optimized weights (`scripts/optimize.ts`) |
 | expectimax | 165.1 ± 31.1 | 204 | 154 | depth-3, 3 sampled rolls per chance node, top-M pruning |
-| planner | 156.4 ± 30.1 | 196 | 0.7 | expert rule layers (purple 6-chains, per-die pool value, dynamic re-roll) over the greedy eval |
+| planner | 156.4 ± 30.1 | 196 | 0.7 | expert rule layers over the greedy eval |
 | mc | ~150 | — | 90 | flat Monte-Carlo, random rollouts |
 | greedy | 139.3 ± 22 | 169 | 1 | one-step lookahead over `evaluate(state, weights)` |
 | random | 58.7 ± 17 | 83 | 0.1 | floor |
 
-Solo benchmark from the rulebook: 140 "not bad", 200 "hats off", 280+ "so
-clever". There is plenty of headroom — that's the point of the lab. Obvious
-next experiments: feed `TUNED_WEIGHTS` into expectimax/mcts/planner (all
-three currently search over the *default* eval), re-run the CEM optimizer on
-the planner's knobs, and stack MCTS on the tuned eval as its leaf/rollout
-value.
+Solo benchmark from the rulebook: 140 "not bad", 200 "hats off", 240 "what a
+genius", 280+ "so clever". td-net's median game is 244; its best games clear
+290. Next levers, in expected-value order: phase-gated die-face features for
+the known-faces decision points (the net's one structural blind spot), wider
+hidden layers once the feature-fixed curve saturates, and deeper search with
+better chance sampling on top of the improved net.
 
 ## Variants
 
