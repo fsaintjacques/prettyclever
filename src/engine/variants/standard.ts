@@ -50,7 +50,15 @@ const blue = crossGridArea({
     { kind: 'col', cells: [2, 6, 10], bonus: plus1 },
   ],
   scoring: { kind: 'countTable', table: [0, 1, 2, 4, 7, 11, 16, 22, 29, 37, 46, 56] },
-  ui: { columns: 4 },
+  // The printed sheet has a hole at the top-left: row 1 is "· 2 3 4", so the
+  // columns line up as {5,9} {2,6,10} {3,7,11} {4,8,12}.
+  ui: {
+    columns: 4,
+    cells: [
+      { label: null, void: true },
+      ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((v) => ({ label: String(v) })),
+    ],
+  },
 });
 
 const green = thresholdTrackArea({
