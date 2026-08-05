@@ -25,6 +25,7 @@ import {
   type Action,
   type GameState,
   type RNG,
+  type VariantDef,
 } from '../engine';
 import { defaultWeights, evaluate, type Weights } from './greedy';
 import type { Strategy } from './types';
@@ -39,6 +40,12 @@ export interface ExpectimaxOpts {
   /** Candidate actions kept at deeper decision nodes. */
   maxActions: number;
   weights: Partial<Weights>;
+  /**
+   * Leaf evaluation at the search horizon, on the final-score scale.
+   * Defaults to the greedy `evaluate` with `weights`. Candidate pruning still
+   * ranks with the greedy eval (it is much cheaper and only orders siblings).
+   */
+  evalFn?: (s: GameState, v: VariantDef) => number;
 }
 
 const defaults: ExpectimaxOpts = {
@@ -64,6 +71,7 @@ export function makeExpectimax(opts: Partial<ExpectimaxOpts> = {}): Strategy {
     choose(state, actions, ctx) {
       if (actions.length === 1) return actions[0];
       const v = ctx.variant;
+      const leafEval = o.evalFn ?? ((s: GameState) => evaluate(s, v, w));
       // One deterministic base seed per call; chance samples derive from it
       // by (depth, sample index) so sibling branches share the same rolls.
       const baseSeed = Math.floor(ctx.rng() * 0xffffffff) >>> 0;
@@ -94,7 +102,7 @@ export function makeExpectimax(opts: Partial<ExpectimaxOpts> = {}): Strategy {
         const node = getPending(s, v);
         if (node.kind === 'over') return scoreState(s, v).total;
         if (node.kind === 'chance') {
-          if (depthLeft <= 0) return evaluate(s, v, w);
+          if (depthLeft <= 0) return leafEval(s, v);
           let sum = 0;
           for (let k = 0; k < o.chanceSamples; k++) {
             const ns = cloneState(s);
@@ -104,7 +112,7 @@ export function makeExpectimax(opts: Partial<ExpectimaxOpts> = {}): Strategy {
           return sum / o.chanceSamples;
         }
         const isBonus = s.pending.length > 0;
-        if (!isBonus && depthLeft <= 0) return evaluate(s, v, w);
+        if (!isBonus && depthLeft <= 0) return leafEval(s, v);
         const nextDepth = isBonus ? depthLeft : depthLeft - 1;
         let best = -Infinity;
         for (const kid of expand(s, node.actions, o.maxActions)) {

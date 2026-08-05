@@ -4,6 +4,7 @@ import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
 import { makePlanner, type PlannerOpts } from './planner';
 import { makeRandom } from './random';
+import { makeTdNet, makeTdNetEval } from './tdnet';
 import { TUNED_WEIGHTS } from './tuned';
 import type { Strategy } from './types';
 
@@ -15,6 +16,7 @@ export * from './tuned';
 export * from './expectimax';
 export * from './mcts';
 export * from './planner';
+export * from './tdnet';
 
 /**
  * Joint CEM over planner knobs + base eval weights (scripts/optimize-planner.ts,
@@ -52,6 +54,10 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   // vs 165.1 for expectimax on default weights.
   'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
   mcts: (opts) => makeMcts(opts as never),
+  // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
+  'td-net': (opts) => makeTdNet(opts as never),
+  // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
+  'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
 };
 
 export function makeStrategy(name: string, opts?: Record<string, unknown>): Strategy {
