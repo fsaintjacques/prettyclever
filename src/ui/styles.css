@@ -958,6 +958,29 @@ button:focus-visible {
   color: var(--ink-2);
 }
 
+.dice-multiples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dice-panel {
+  margin: 0;
+  width: 150px;
+  background: var(--sheet-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  padding: 8px 8px 4px;
+}
+
+.dice-panel figcaption {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 2px;
+}
+
 .rating-rows {
   margin-top: 12px;
   font-size: 13.5px;

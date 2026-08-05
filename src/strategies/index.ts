@@ -57,7 +57,7 @@ export const strategyRegistry: Record<string, StrategyFactory> = {
   'expectimax-tuned': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, ...opts }),
   mcts: (opts) => makeMcts(opts as never),
   // TD(λ) self-play value network (scripts/train-td.ts), pure afterstate argmax.
-  // 60k episodes: 242.6 ± 23.2 (seed 11) / 239.9 ± 23.6 (seed 777), 1000 games each.
+  // 240k episodes: 250.7 ± 22.5 (seed 11) / 250.1 ± 23.7 (seed 777), 1000 games each.
   'td-net': (opts) => makeTdNet(opts as never),
   // v1 features + phase-gated die-face block (scripts/train-td-v2.ts); see tdnetv2.ts.
   'td-net-v2': (opts) => makeTdNetV2(opts as never),

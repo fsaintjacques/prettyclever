@@ -3,6 +3,7 @@ import type { VariantDef } from '../../engine';
 import { strategyRegistry } from '../../strategies';
 import type { SimStats } from '../../sim/stats';
 import type { SimRequest, SimResponse } from '../simWorker';
+import { DiceHistogram } from './DiceHistogram';
 import { Histogram } from './Histogram';
 
 interface Run {
@@ -204,6 +205,13 @@ export function SimPanel({ variant }: { variant: VariantDef }) {
               })()}
             </div>
           </div>
+
+          {current.stats.diceUsed && (
+            <div className="chart-block">
+              <h4>Dice played per game, by color and face</h4>
+              <DiceHistogram data={current.stats.diceUsed} />
+            </div>
+          )}
 
           <div className="rating-rows">
             {current.stats.ratingCounts.map((r) => (

@@ -16,6 +16,8 @@ export interface GameResult {
   score: ScoreBreakdown;
   state: GameState;
   decisions: number;
+  /** Marks made with an actual die (picks, +1s, passive picks — not bonuses), as [dieIndex][face-1] counts. */
+  diceUsed: number[][];
 }
 
 /** Play one seeded game to completion. */
@@ -23,6 +25,7 @@ export function playGame(v: VariantDef, strategy: Strategy, seed: number): GameR
   const rng = mulberry32(seed);
   const s = newGame(v);
   const ctx = { variant: v, rng };
+  const diceUsed = v.colors.map(() => Array(6).fill(0) as number[]);
   let decisions = 0;
   let guard = 0;
   for (;;) {
@@ -34,10 +37,17 @@ export function playGame(v: VariantDef, strategy: Strategy, seed: number): GameR
       continue;
     }
     const a = strategy.choose(s, node.actions, ctx);
+    if (
+      (a.t === 'pick' && a.placement) ||
+      a.t === 'plus1' ||
+      a.t === 'passivePick'
+    ) {
+      diceUsed[a.die][s.faces[a.die] - 1]++;
+    }
     applyActionMut(s, v, a);
     decisions++;
   }
-  return { seed, score: scoreState(s, v), state: s, decisions };
+  return { seed, score: scoreState(s, v), state: s, decisions, diceUsed };
 }
 
 export interface SimOptions {

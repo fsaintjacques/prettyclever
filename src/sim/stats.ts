@@ -18,6 +18,8 @@ export interface SimStats {
   meanFoxes: number;
   meanFoxPoints: number;
   ratingCounts: { label: string; count: number }[];
+  /** Average times per game each die color was played at each face (1–6). */
+  diceUsed: { color: string; counts: number[] }[];
 }
 
 export function computeStats(v: VariantDef, results: GameResult[]): SimStats {
@@ -45,10 +47,19 @@ export function computeStats(v: VariantDef, results: GameResult[]): SimStats {
     ratingCounts.set(label, (ratingCounts.get(label) ?? 0) + 1);
   }
 
+  const diceUsed = v.colors.map((color, die) => ({
+    color,
+    counts: Array.from(
+      { length: 6 },
+      (_, f) => results.reduce((acc, r) => acc + (r.diceUsed?.[die]?.[f] ?? 0), 0) / n,
+    ),
+  }));
+
   return {
     games: n,
     mean,
     std,
+    diceUsed,
     min: scores[0],
     max: scores[n - 1],
     p10: pct(10),
