@@ -75,7 +75,7 @@ held-out seeds confirm every tuned/learned entry):
 | strategy | mean ± std | p90 | ms/game | idea |
 |---|---|---|---|---|
 | **td-net** | **250.7 ± 22.5** | 275 | 10 | TD(λ) self-play value network, afterstate argmax, 240k episodes (`scripts/train-td.ts`) |
-| td-net-v2 | 243.0 ± 25.3 | — | 12 | td-net + phase-gated die-face features; +1.6 paired vs v1 at matched budget, behind v1 at 240k — width/episodes bind before the face blind spot |
+| td-net-v2 | 249.7 ± 22.4 | 275 | 12 | td-net + phase-gated die-face features; statistical tie with v1 at an equal 240k-episode budget — at this width the face blind spot isn't what binds |
 | expectimax-net | ~237 | 269 | ~3300 | depth-3 expectimax with the TD net as leaf — no longer beats raw td-net |
 | expectimax-tuned | 183.8 ± 35.2 | 230 | 307 | expectimax with CEM weights as leaf eval |
 | planner-tuned | 170.0 ± 36.9 | 222 | 0.9 | joint CEM over planner knobs + eval weights |
