@@ -104,6 +104,22 @@ lives in multi-ply search and/or better training signal, not capacity.
 A per-seed clairvoyant upper bound (hindsight solver over predetermined
 dice) is the natural next instrument to measure what actually remains.
 
+### Twice as Clever (`--variant twice-as-clever`)
+
+| strategy | mean ± std | p90 | ms/game | notes |
+|---|---|---|---|---|
+| **td-net** | **217.1 ± 19.9** | 242 | 20 | 252 face-blind features, 240k episodes; curve had NOT plateaued — headroom is real |
+| mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
+| greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
+| random | 63.6 ± 15.1 | 84 | 0.1 | floor |
+
+Rating table tops out at 320 "Twice as clever!". The net's signature discovery:
+yellow's convex crossing table (10 crosses = 165) is the sheet's dominant
+engine — it pours 137.6 mean points into yellow (greedy: 7.2), fed by silver
+platter-chains and colored ?s. Known weakness: it under-protects the fox
+minimum (minArea ~6–9). Training checkpoint in `checkpoints/td-twice.json`
+(resumable with pinned ε and halved lr for the next leg).
+
 ## Variants
 
 A variant is data: dice colors, round bonuses, and a list of areas built from
