@@ -113,29 +113,42 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **220.5 ± 19.5** | 244 | 20 | 252 face-blind features, 500k episodes — the last 260k with `--spotlight 0.2` on the non-yellow areas |
+| **td-net** | **274.4 ± 34.2** | 317 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
 
-Rating table tops out at 320 "Twice as clever!". The net's signature discovery:
-yellow's convex crossing table (10 crosses = 165) is the sheet's dominant
-engine — it pours ~140 mean points into yellow (greedy: 7.2), fed by silver
-platter-chains and colored ?s. The first 240k episodes collapsed onto that
-engine so hard that a yellow-forbidden ablation scored 116 — below flat
-Monte-Carlo — i.e. the value function knew nothing outside its own
-trajectory distribution. Spotlight episodes (biased behavior toward a random
-neglected area, unbiased targets) recovered real breadth: +4.5 points
-overall (216.4 → 220.5 held-out), blue 13.6 → 16.5, pink 9.0 → 10.7, fox
-points 6.2 → 7.4, funded by ~6 silver points — and the ablation rose to 124.
-Green remains the unsolved weakness. Training checkpoint in
-`checkpoints/td-twice-spot.json` (curve still creeping at 500k).
+Rating table tops out at 320 "Twice as clever!" — the net now clears it in
+~10% of games (max observed 394).
 
-Hindsight efficiency (same instrument as the base game, 20 worlds, beam
-512): the spotlight net scores 216.8 vs a clairvoyant 250.6 — **86.6%**
-(the pre-spotlight net measured 85.3%). The twice net still sits measurably
-farther from its ceiling than the base net (90.8%), so the remaining gap —
-green above all — is worth further spotlight legs or deeper search.
+**The yellow engine was a ~55-point local optimum.** Plain self-play TD
+converged to pouring ~140 points into yellow's convex crossing table
+(10 crosses = 165) for a ~220 mean; a yellow-forbidden ablation scored 116 —
+below flat Monte-Carlo — i.e. the value function knew nothing outside its
+own trajectory distribution. Spotlight episodes alone (+4.5) softened but
+never escaped the basin. What escaped it was a **curriculum constraint**:
+`--cap-yellow k` limits the *dice* a training game may spend on yellow
+(bonus ?s stay free) — retrained at k=4 the net rediscovered the fox
+economy (239.5); at k=8 with a fox-targeted spotlight (`--spotlight-areas
+...,fox`, β per point of minArea + foxPoints) it reached **277.2 frozen /
+274.4 held-out**. The learned regime is exactly the strategy the Doppelt
+community folklore describes: balance every area, keep the minimum high
+(blue, ~30 — one Reddit player's advice was literally "28 should be your
+lowest total"), and multiply it with 3.4 foxes (~86 points, the biggest
+"area" on the sheet), funded by trimming yellow to ~38 and silver to its
+platter-chain floor. The cap is pure scaffolding: at inference capped and
+uncapped play are identical — the net now *chooses* few yellow dice. The
+ablation progression tells the health story: 116 → 124 → **172** (mc: 159).
+Checkpoint `checkpoints/td-twice-cap8.json`; the curve had still not
+plateaued at 500k.
+
+Hindsight efficiency (20 worlds, beam 512): td-net 287.3 vs clairvoyant
+327.3 — **88.1%**. Re-running the instrument with the fox-regime net as
+beam heuristic exposed how loose the old bound was: the previous
+"clairvoyant optimum" of 250.6 (measured with the yellow-max heuristic,
+which steered the beam into its own basin) is now beaten by the *policy*
+outright. The current optimum plays the same fox economy but keeps more
+yellow (57) and green (63) — evidence the blend can still improve.
 
 ## Variants
 

@@ -183,6 +183,19 @@ function filledCells(s: GameState, area: string): number {
   return n;
 }
 
+/**
+ * Spotlight bonus for a state. Real areas reward filled cells; the 'fox'
+ * pseudo-area rewards the fox economy directly (raise the minimum area,
+ * collect foxes) — β applies per point of minArea + foxPoints.
+ */
+function spotBonus(s: GameState, v: VariantDef, spot: Spot): number {
+  if (spot.area === 'fox') {
+    const br = scoreState(s, v);
+    return spot.beta * (br.minArea + br.foxPoints);
+  }
+  return spot.beta * filledCells(s, spot.area);
+}
+
 function rawValue(fs: FeatureSet, ctx: EvalCtx, s: GameState, v: VariantDef): number {
   if (s.phase === 'over') return scoreState(s, v).total / fs.scale;
   fs.extract(s, v, ctx.x);
@@ -200,7 +213,7 @@ function spotValue(fs: FeatureSet, ctx: EvalCtx, s: GameState, v: VariantDef, sp
     let bestVal = -Infinity;
     for (const a of node.actions) {
       const ns = applyAction(cur, v, a);
-      const val = rawValue(fs, ctx, ns, v) + spot.beta * filledCells(ns, spot.area);
+      const val = rawValue(fs, ctx, ns, v) + spotBonus(ns, v, spot);
       if (val > bestVal) {
         bestVal = val;
         best = ns;
@@ -209,7 +222,7 @@ function spotValue(fs: FeatureSet, ctx: EvalCtx, s: GameState, v: VariantDef, sp
     if (!best) break;
     cur = best;
   }
-  return rawValue(fs, ctx, cur, v) + spot.beta * filledCells(cur, spot.area);
+  return rawValue(fs, ctx, cur, v) + spotBonus(cur, v, spot);
 }
 
 function chooseSpot(
@@ -576,7 +589,9 @@ async function main(): Promise<void> {
   const v = getVariant(fs.variantId);
   const spotAreas = cfg.spotlightAreas ? cfg.spotlightAreas.split(',') : v.areas.map((a) => a.id);
   for (const id of spotAreas) {
-    if (!v.areas.some((a) => a.id === id)) throw new Error(`--spotlight-areas: unknown area '${id}'`);
+    if (id !== 'fox' && !v.areas.some((a) => a.id === id)) {
+      throw new Error(`--spotlight-areas: unknown area '${id}'`);
+    }
   }
 
   let net: Net;

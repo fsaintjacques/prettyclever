@@ -80,8 +80,9 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
   'twice-as-clever': {
     // TD(λ) self-play value network (scripts/train-td-parallel.ts --features twice),
     // pure afterstate argmax over the twice-specific face-blind features.
-    // 500k episodes, the last 260k with --spotlight 0.2 on the non-yellow areas:
-    // 220.5 ± 19.5 (seed 11) / 221.2 ± 19.6 (seed 777), 500 games each.
+    // Trained with the yellow-cap curriculum (--cap-yellow 8) + fox spotlight,
+    // which escaped the yellow-max local optimum into the fox-economy regime:
+    // 274.4 ± 34.2 (seed 11) / 274.9 ± 34.3 (seed 777), 500 games each.
     'td-net': (opts) => makeTdNetTwice(opts as never),
   },
 };
