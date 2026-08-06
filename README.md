@@ -113,13 +113,13 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **274.4 ± 34.2** | 317 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
+| **td-net** | **281.7 ± 31.6** | 322 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
 
 Rating table tops out at 320 "Twice as clever!" — the net now clears it in
-~10% of games (max observed 394).
+~12% of games (p90 sits above it; max observed 394).
 
 **The yellow engine was a ~55-point local optimum.** Plain self-play TD
 converged to pouring ~140 points into yellow's convex crossing table
@@ -130,8 +130,8 @@ never escaped the basin. What escaped it was a **curriculum constraint**:
 `--cap-yellow k` limits the *dice* a training game may spend on yellow
 (bonus ?s stay free) — retrained at k=4 the net rediscovered the fox
 economy (239.5); at k=8 with a fox-targeted spotlight (`--spotlight-areas
-...,fox`, β per point of minArea + foxPoints) it reached **277.2 frozen /
-274.4 held-out**. The learned regime is exactly the strategy the Doppelt
+...,fox`, β per point of minArea + foxPoints) it reached 277.2 frozen at 250k and, still
+un-plateaued, **286.1 frozen / 281.7 held-out** at 500k. The learned regime is exactly the strategy the Doppelt
 community folklore describes: balance every area, keep the minimum high
 (blue, ~30 — one Reddit player's advice was literally "28 should be your
 lowest total"), and multiply it with 3.4 foxes (~86 points, the biggest
