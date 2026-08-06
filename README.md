@@ -125,7 +125,7 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **286.2 ± 32.1** | 327 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
+| **td-net** | **289.1 ± 32.9** | 330 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
@@ -144,8 +144,11 @@ never escaped the basin. What escaped it was a **curriculum constraint**:
 economy (239.5); at k=8 with a fox-targeted spotlight (`--spotlight-areas
 ...,fox`, β per point of minArea + foxPoints) it reached 277.2 frozen at 250k and 286.1 at
 500k. Removing the cap at 576k caused no relapse — the regime is stable
-free-running — and the final leg reached **287.6 frozen / 286.2 held-out**
-at 750k, where the curve finally flattens. The learned regime is exactly the strategy the Doppelt
+free-running — and training to 750k reached 287.6 frozen / 286.2 held-out,
+where the curve flattened. A final polish leg (ε annealed 0.08 → 0.02 and
+lr halved, once the regime no longer needed exploration pressure) added
+~3 more: **292.7 frozen / 289.1 / 291.4 held-out** (seeds 11/777).
+The learned regime is exactly the strategy the Doppelt
 community folklore describes: balance every area, keep the minimum high
 (blue, ~30 — one Reddit player's advice was literally "28 should be your
 lowest total"), and multiply it with 3.4 foxes (~86 points, the biggest
@@ -153,7 +156,7 @@ lowest total"), and multiply it with 3.4 foxes (~86 points, the biggest
 platter-chain floor. The cap is pure scaffolding: at inference capped and
 uncapped play are identical — the net now *chooses* few yellow dice. The
 ablation progression tells the health story: 116 → 124 → **172** (mc: 159).
-Checkpoint `checkpoints/td-twice-free.json`.
+Checkpoint `checkpoints/td-twice-polish.json`.
 
 Hindsight efficiency (20 worlds, beam 512): td-net 287.3 vs clairvoyant
 327.3 — **88.1%**. Re-running the instrument with the fox-regime net as
