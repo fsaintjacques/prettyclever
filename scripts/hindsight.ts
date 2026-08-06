@@ -136,7 +136,19 @@ function advanceMut(it: Item, v: VariantDef, t: FaceTable): void {
   }
 }
 
-function hindsightScore(v: VariantDef, h: Heuristic, table: FaceTable, beam: number): number {
+interface Line {
+  score: number;
+  areas: Record<string, number>;
+  foxPoints: number;
+  minArea: number;
+}
+
+function lineOf(s: GameState, v: VariantDef): Line {
+  const br = scoreState(s, v);
+  return { score: br.total, areas: br.areas, foxPoints: br.foxPoints, minArea: br.minArea };
+}
+
+function hindsightLine(v: VariantDef, h: Heuristic, table: FaceTable, beam: number): Line {
   const value = (s: GameState): number => {
     if (s.phase === 'over') return scoreState(s, v).total / h.scale;
     h.extract(s, v, h.ctx.x);
@@ -146,7 +158,7 @@ function hindsightScore(v: VariantDef, h: Heuristic, table: FaceTable, beam: num
   const root: Item = { s: newGame(v), k: 0, val: 0 };
   advanceMut(root, v, table);
   let frontier: Item[] = [root];
-  let best = -Infinity;
+  let best: Line | null = null;
 
   while (frontier.length > 0) {
     const next: Item[] = [];
@@ -158,8 +170,8 @@ function hindsightScore(v: VariantDef, h: Heuristic, table: FaceTable, beam: num
         applyActionMut(ni.s, v, a);
         advanceMut(ni, v, table);
         if (ni.s.phase === 'over') {
-          const sc = scoreState(ni.s, v).total;
-          if (sc > best) best = sc;
+          const line = lineOf(ni.s, v);
+          if (!best || line.score > best.score) best = line;
         } else {
           ni.val = value(ni.s);
           next.push(ni);
@@ -169,11 +181,12 @@ function hindsightScore(v: VariantDef, h: Heuristic, table: FaceTable, beam: num
     next.sort((a, b) => b.val - a.val);
     frontier = next.slice(0, beam);
   }
+  if (!best) throw new Error('beam found no terminal state');
   return best;
 }
 
 /** Play `strategy` (no clairvoyance) through the same determinized world. */
-function policyScore(v: VariantDef, strategyName: string, table: FaceTable, seed: number): number {
+function policyLine(v: VariantDef, strategyName: string, table: FaceTable, seed: number): Line {
   const strategy = makeStrategy(v.id, strategyName);
   const s = newGame(v);
   const ctx = { variant: v, rng: mulberry32(seed) };
@@ -188,7 +201,7 @@ function policyScore(v: VariantDef, strategyName: string, table: FaceTable, seed
     }
     applyActionMut(s, v, strategy.choose(s, node.actions, ctx));
   }
-  return scoreState(s, v).total;
+  return lineOf(s, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -216,27 +229,44 @@ const h = heuristicFor(v.id);
 console.log(`hindsight — ${v.id}, ${games} worlds from seed ${seed0}, beam ${beam}, policy ${strategyName}`);
 console.log('seed     policy  hindsight  efficiency');
 
-let polSum = 0;
-let hinSum = 0;
+const meanLine = { policy: null as Line | null, hindsight: null as Line | null };
+const addLine = (key: 'policy' | 'hindsight', l: Line) => {
+  const acc = meanLine[key];
+  if (!acc) {
+    meanLine[key] = { ...l, areas: { ...l.areas } };
+    return;
+  }
+  acc.score += l.score;
+  acc.foxPoints += l.foxPoints;
+  acc.minArea += l.minArea;
+  for (const k of Object.keys(l.areas)) acc.areas[k] += l.areas[k];
+};
+const fmtLine = (l: Line, n: number) =>
+  `${(l.score / n).toFixed(1)}  [${Object.entries(l.areas)
+    .map(([k, x]) => `${k.slice(0, 2)} ${(x / n).toFixed(1)}`)
+    .join(' ')}]  fox ${(l.foxPoints / n).toFixed(1)} (min ${(l.minArea / n).toFixed(1)})`;
+
 let effSum = 0;
 const t0 = performance.now();
 for (let i = 0; i < games; i++) {
   const seed = seed0 + i;
   const mkTable = () => new FaceTable(mulberry32((seed ^ 0x9e3779b9) >>> 0), v.colors.length);
-  const pol = policyScore(v, strategyName, mkTable(), seed);
+  const pol = policyLine(v, strategyName, mkTable(), seed);
   // The policy's line is itself a legal clairvoyant line in this world, so it
   // is a witness for the lower bound — a narrow beam can never report below it.
-  const hin = Math.max(hindsightScore(v, h, mkTable(), beam), pol);
-  const eff = pol / hin;
-  polSum += pol;
-  hinSum += hin;
+  const beamLine = hindsightLine(v, h, mkTable(), beam);
+  const hin = beamLine.score >= pol.score ? beamLine : pol;
+  const eff = pol.score / hin.score;
+  addLine('policy', pol);
+  addLine('hindsight', hin);
   effSum += eff;
   console.log(
-    `${String(seed).padEnd(8)} ${String(pol).padStart(5)}  ${String(hin).padStart(8)}  ${(100 * eff).toFixed(1).padStart(9)}%`,
+    `${String(seed).padEnd(8)} ${String(pol.score).padStart(5)}  ${String(hin.score).padStart(8)}  ${(100 * eff).toFixed(1).padStart(9)}%`,
   );
 }
 const dt = (performance.now() - t0) / 1000;
+console.log(`\nmean policy    ${fmtLine(meanLine.policy!, games)}`);
+console.log(`mean hindsight ${fmtLine(meanLine.hindsight!, games)}`);
 console.log(
-  `\nmean policy ${(polSum / games).toFixed(1)}  mean hindsight ${(hinSum / games).toFixed(1)}` +
-    `  mean efficiency ${((100 * effSum) / games).toFixed(1)}%  (${(dt / games).toFixed(1)}s/world)`,
+  `mean efficiency ${((100 * effSum) / games).toFixed(1)}%  (${(dt / games).toFixed(1)}s/world)`,
 );
