@@ -232,6 +232,23 @@ function chooseSpot(
   return best;
 }
 
+/**
+ * A "yellow-die" action spends a die on the yellow area (picks, passive picks,
+ * +1s). Bonus placements (free ?s, platter chains) are not dice and never count.
+ */
+function isYellowDieAction(a: Action): boolean {
+  return (
+    (a.t === 'pick' || a.t === 'passivePick' || a.t === 'plus1') && a.placement?.area === 'yellow'
+  );
+}
+
+/** With a cap in force and exhausted, drop yellow-die actions (when alternatives exist). */
+function capActions(actions: Action[], capYellow: number, yellowUsed: number): Action[] {
+  if (capYellow <= 0 || yellowUsed < capYellow) return actions;
+  const filtered = actions.filter((a) => !isYellowDieAction(a));
+  return filtered.length > 0 ? filtered : actions;
+}
+
 function playEpisode(
   fs: FeatureSet,
   v: VariantDef,
@@ -240,10 +257,12 @@ function playEpisode(
   epsilon: number,
   lambda: number,
   spot: Spot | null,
+  capYellow: number,
 ): EpisodeSamples {
   const s = newGame(v);
   const states: Sparse[] = [];
   const values: number[] = [];
+  let yellowUsed = 0;
   for (;;) {
     const node = getPending(s, v);
     if (node.kind === 'over') break;
@@ -251,10 +270,12 @@ function playEpisode(
       resolveChanceMut(s, v, rng);
       continue;
     }
+    const acts = capActions(node.actions, capYellow, yellowUsed);
     let a: Action;
-    if (epsilon > 0 && rng() < epsilon) a = node.actions[Math.floor(rng() * node.actions.length)];
-    else if (spot) a = chooseSpot(fs, ctx, s, v, node.actions, spot);
-    else a = fs.choose(ctx, s, v, node.actions);
+    if (epsilon > 0 && rng() < epsilon) a = acts[Math.floor(rng() * acts.length)];
+    else if (spot) a = chooseSpot(fs, ctx, s, v, acts, spot);
+    else a = fs.choose(ctx, s, v, acts);
+    if (isYellowDieAction(a)) yellowUsed++;
     applyActionMut(s, v, a);
     if (s.phase !== 'over') {
       fs.extract(s, v, ctx.x);
@@ -280,6 +301,8 @@ interface WorkerInit {
   spotBeta: number;
   /** Areas the spotlight may land on. */
   spotAreas: string[];
+  /** Max dice a game may spend on yellow (0 = uncapped). */
+  capYellow: number;
 }
 
 interface TaskMsg {
@@ -347,7 +370,7 @@ if (!isMainThread) {
           init.spotProb > 0 && rng() < init.spotProb
             ? { area: init.spotAreas[Math.floor(rng() * init.spotAreas.length)], beta: init.spotBeta }
             : null;
-        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda, spot));
+        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda, spot, init.capYellow));
       }
     }
     parentPort!.postMessage({ type: 'result', warm: msg.type === 'warm', episodes } satisfies ResultMsg);
@@ -543,6 +566,7 @@ async function main(): Promise<void> {
     spotlight: num('spotlight', 0),
     spotlightBeta: num('spotlight-beta', 0.01),
     spotlightAreas: args['spotlight-areas'],
+    capYellow: num('cap-yellow', 0),
     resume: args.resume,
     checkpoint: args.checkpoint ?? 'checkpoints/td-parallel.json',
     out: args.out ?? 'checkpoints/tdnet-weights-parallel.ts',
@@ -592,7 +616,8 @@ async function main(): Promise<void> {
     `${cfg.workers} workers × chunk ${cfg.chunk}, features ${cfg.features}, target ${cfg.episodes}, patience ${cfg.patience}` +
       (cfg.spotlight > 0
         ? `, spotlight ${cfg.spotlight} × β${cfg.spotlightBeta} on [${spotAreas.join(',')}]`
-        : ''),
+        : '') +
+      (cfg.capYellow > 0 ? `, yellow-dice cap ${cfg.capYellow}` : ''),
   );
 
   const t0 = performance.now();
@@ -614,6 +639,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < cfg.evalGames; i++) {
       const rng = mulberry32((cfg.evalSeed + i * 2654435761) >>> 0);
       const s = newGame(v);
+      let yellowUsed = 0;
       for (;;) {
         const node = getPending(s, v);
         if (node.kind === 'over') break;
@@ -621,7 +647,9 @@ async function main(): Promise<void> {
           resolveChanceMut(s, v, rng);
           continue;
         }
-        applyActionMut(s, v, fs.choose(ctx, s, v, node.actions));
+        const a = fs.choose(ctx, s, v, capActions(node.actions, cfg.capYellow, yellowUsed));
+        if (isYellowDieAction(a)) yellowUsed++;
+        applyActionMut(s, v, a);
       }
       const br = scoreState(s, v);
       sum += br.total;
@@ -701,6 +729,7 @@ async function main(): Promise<void> {
           spotProb: cfg.spotlight,
           spotBeta: cfg.spotlightBeta,
           spotAreas,
+          capYellow: cfg.capYellow,
         } satisfies WorkerInit,
         execArgv: ['--import', 'tsx'],
       }),
