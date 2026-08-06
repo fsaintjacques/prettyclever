@@ -18,7 +18,9 @@
  *    bit-reproducible (per-episode dice streams still are).
  *  - Early stopping: training stops once no new best frozen-eval has been
  *    seen for --patience episodes.
- *  - --features v1|v2 selects the tdnet or tdnetv2 feature set/policy.
+ *  - --features v1|v2|twice selects the feature set/policy — and with it the
+ *    variant, value scale and warm-start teacher (v1/v2: the committed nets on
+ *    thats-pretty-clever; twice: the greedy baseline on twice-as-clever).
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
@@ -42,6 +44,7 @@ import {
   extractFeatures,
   forward,
   initNet,
+  makeTdNet,
   netFromParams,
   paramsFromNet,
   TD_FEATURES,
@@ -49,25 +52,66 @@ import {
   type Net,
   type TdNetParams,
 } from '../src/strategies/tdnet';
-import { chooseByValue2, extractFeaturesV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
+import {
+  chooseByValueTwice,
+  extractFeaturesTwice,
+  TDT_FEATURES,
+  TDT_SCALE,
+} from '../src/strategies/tdnet-twice';
+import { chooseByValue2, extractFeaturesV2, makeTdNetV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
+import { makeGreedy } from '../src/strategies/greedy';
 import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
 import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
+import type { Strategy } from '../src/strategies/types';
 
 // ---------------------------------------------------------------------------
 // Feature sets
 // ---------------------------------------------------------------------------
 
 interface FeatureSet {
+  /** Variant the features are extracted from (and the games are played on). */
+  variantId: string;
   n: number;
+  /** Value-target scale: V learns score / scale. */
+  scale: number;
+  /** Exported const name of the generated weights module. */
+  constName: string;
   extract: (s: GameState, v: VariantDef, x: Float64Array) => void;
   choose: (ctx: EvalCtx, s: GameState, v: VariantDef, actions: Action[]) => Action;
-  /** Committed same-feature-set net used as the warm-start teacher for --fresh runs. */
-  teacher: TdNetParams;
+  /** Warm-start teacher for --fresh runs (committed net where one exists, else a baseline). */
+  warmTeacher: () => Strategy;
 }
 
 const FEATURE_SETS: Record<string, FeatureSet> = {
-  v1: { n: TD_FEATURES, extract: extractFeatures, choose: chooseByValue, teacher: TDNET_WEIGHTS },
-  v2: { n: TD2_FEATURES, extract: extractFeaturesV2, choose: chooseByValue2, teacher: TDNETV2_WEIGHTS },
+  v1: {
+    variantId: 'thats-pretty-clever',
+    n: TD_FEATURES,
+    scale: 300,
+    constName: 'TDNET_WEIGHTS',
+    extract: extractFeatures,
+    choose: chooseByValue,
+    warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
+  },
+  v2: {
+    variantId: 'thats-pretty-clever',
+    n: TD2_FEATURES,
+    scale: 300,
+    constName: 'TDNET_V2_WEIGHTS',
+    extract: extractFeaturesV2,
+    choose: chooseByValue2,
+    warmTeacher: () => makeTdNetV2({ params: TDNETV2_WEIGHTS }),
+  },
+  // No strong committed teacher yet for Twice — warm from the variant-generic
+  // greedy baseline; self-play does the heavy lifting.
+  twice: {
+    variantId: 'twice-as-clever',
+    n: TDT_FEATURES,
+    scale: TDT_SCALE,
+    constName: 'TDNET_TWICE_WEIGHTS',
+    extract: extractFeaturesTwice,
+    choose: chooseByValueTwice,
+    warmTeacher: () => makeGreedy(),
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -141,7 +185,7 @@ function playEpisode(
     }
   }
   const score = scoreState(s, v).total;
-  return { states, targets: lambdaReturns(values, score / 300, lambda), score };
+  return { states, targets: lambdaReturns(values, score / fs.scale, lambda), score };
 }
 
 // ---------------------------------------------------------------------------
@@ -179,18 +223,19 @@ interface ResultMsg {
 if (!isMainThread) {
   const init = workerData as WorkerInit;
   const fs = FEATURE_SETS[init.features];
-  const v = getVariant('thats-pretty-clever');
-  let teacherCtx: EvalCtx | null = null;
+  const v = getVariant(fs.variantId);
+  let teacher: Strategy | null = null;
   parentPort!.on('message', (msg: TaskMsg | WarmTaskMsg | { type: 'exit' }) => {
     if (msg.type === 'exit') process.exit(0);
     const episodes: EpisodeSamples[] = [];
     if (msg.type === 'warm') {
-      teacherCtx ??= createEvalCtx(netFromParams(fs.teacher));
+      teacher ??= fs.warmTeacher();
       const scratch = new Float64Array(fs.n);
       for (let i = 0; i < msg.count; i++) {
         const rng = mulberry32((init.seed + 101 + (msg.gameStart + i) * 2654435761) >>> 0);
         const s = newGame(v);
         const states: Sparse[] = [];
+        const sctx = { variant: v, rng };
         for (;;) {
           const node = getPending(s, v);
           if (node.kind === 'over') break;
@@ -198,14 +243,14 @@ if (!isMainThread) {
             resolveChanceMut(s, v, rng);
             continue;
           }
-          applyActionMut(s, v, fs.choose(teacherCtx, s, v, node.actions));
+          applyActionMut(s, v, teacher.choose(s, node.actions, sctx));
           if (s.phase !== 'over') {
             fs.extract(s, v, scratch);
             states.push(toSparse(scratch));
           }
         }
         const score = scoreState(s, v).total;
-        episodes.push({ states, targets: states.map(() => score / 300), score });
+        episodes.push({ states, targets: states.map(() => score / fs.scale), score });
       }
     } else {
       const [W1, b1, W2, b2, W3, b3] = msg.tensors;
@@ -405,8 +450,8 @@ async function main(): Promise<void> {
     out: args.out ?? 'checkpoints/tdnet-weights-parallel.ts',
   };
   const fs = FEATURE_SETS[cfg.features];
-  if (!fs) throw new Error(`unknown feature set '${cfg.features}' (v1 | v2)`);
-  const v = getVariant('thats-pretty-clever');
+  if (!fs) throw new Error(`unknown feature set '${cfg.features}' (${Object.keys(FEATURE_SETS).join(' | ')})`);
+  const v = getVariant(fs.variantId);
 
   let net: Net;
   let trainer: Trainer;
@@ -614,7 +659,7 @@ async function main(): Promise<void> {
 
   const final = bestParams ?? paramsFromNet(net);
   const arr = (a: number[]) => `[${a.map((x) => Number(x.toPrecision(5))).join(',')}]`;
-  const constName = cfg.features === 'v2' ? 'TDNET_V2_WEIGHTS' : 'TDNET_WEIGHTS';
+  const constName = fs.constName;
   writeFileSync(
     cfg.out,
     `/**

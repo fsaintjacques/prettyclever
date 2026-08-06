@@ -5,6 +5,7 @@ import { makeMonteCarlo } from './montecarlo';
 import { makePlanner, type PlannerOpts } from './planner';
 import { makeRandom } from './random';
 import { makeTdNet, makeTdNetEval } from './tdnet';
+import { makeTdNetTwice } from './tdnet-twice';
 import { makeTdNetV2 } from './tdnetv2';
 import { TUNED_WEIGHTS } from './tuned';
 import type { Strategy } from './types';
@@ -18,6 +19,7 @@ export * from './expectimax';
 export * from './mcts';
 export * from './planner';
 export * from './tdnet';
+export * from './tdnet-twice';
 export * from './tdnetv2';
 
 /**
@@ -74,6 +76,11 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
     // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
     'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
+  },
+  'twice-as-clever': {
+    // TD(λ) self-play value network (scripts/train-td-parallel.ts --features twice),
+    // pure afterstate argmax over the twice-specific face-blind features.
+    'td-net': (opts) => makeTdNetTwice(opts as never),
   },
 };
 
