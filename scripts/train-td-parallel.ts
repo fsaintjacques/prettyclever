@@ -246,20 +246,31 @@ function chooseSpot(
 }
 
 /**
- * A "yellow-die" action spends a die on the yellow area (picks, passive picks,
- * +1s). Bonus placements (free ?s, platter chains) are not dice and never count.
+ * The area a die action spends its die on (picks, passive picks, +1s), or null
+ * for everything else. Bonus placements (free ?s, crossAny, platter chains) are
+ * not dice and are never capped — the cap constrains dice, not points.
  */
-function isYellowDieAction(a: Action): boolean {
-  return (
-    (a.t === 'pick' || a.t === 'passivePick' || a.t === 'plus1') && a.placement?.area === 'yellow'
-  );
+function dieArea(a: Action): string | null {
+  if (a.t !== 'pick' && a.t !== 'passivePick' && a.t !== 'plus1') return null;
+  return a.placement?.area ?? null;
 }
 
-/** With a cap in force and exhausted, drop yellow-die actions (when alternatives exist). */
-function capActions(actions: Action[], capYellow: number, yellowUsed: number): Action[] {
-  if (capYellow <= 0 || yellowUsed < capYellow) return actions;
-  const filtered = actions.filter((a) => !isYellowDieAction(a));
+/** Per-area dice budget for a training game: area id → max dice (absent = unlimited). */
+type Caps = Record<string, number>;
+
+/** Drop die actions whose area budget is exhausted, when alternatives remain. */
+function capActions(actions: Action[], caps: Caps, used: Record<string, number>): Action[] {
+  if (Object.keys(caps).length === 0) return actions;
+  const filtered = actions.filter((a) => {
+    const area = dieArea(a);
+    return area === null || caps[area] === undefined || (used[area] ?? 0) < caps[area];
+  });
   return filtered.length > 0 ? filtered : actions;
+}
+
+function countDie(a: Action, used: Record<string, number>): void {
+  const area = dieArea(a);
+  if (area !== null) used[area] = (used[area] ?? 0) + 1;
 }
 
 function playEpisode(
@@ -270,12 +281,12 @@ function playEpisode(
   epsilon: number,
   lambda: number,
   spot: Spot | null,
-  capYellow: number,
+  caps: Caps,
 ): EpisodeSamples {
   const s = newGame(v);
   const states: Sparse[] = [];
   const values: number[] = [];
-  let yellowUsed = 0;
+  const used: Record<string, number> = {};
   for (;;) {
     const node = getPending(s, v);
     if (node.kind === 'over') break;
@@ -283,12 +294,12 @@ function playEpisode(
       resolveChanceMut(s, v, rng);
       continue;
     }
-    const acts = capActions(node.actions, capYellow, yellowUsed);
+    const acts = capActions(node.actions, caps, used);
     let a: Action;
     if (epsilon > 0 && rng() < epsilon) a = acts[Math.floor(rng() * acts.length)];
     else if (spot) a = chooseSpot(fs, ctx, s, v, acts, spot);
     else a = fs.choose(ctx, s, v, acts);
-    if (isYellowDieAction(a)) yellowUsed++;
+    countDie(a, used);
     applyActionMut(s, v, a);
     if (s.phase !== 'over') {
       fs.extract(s, v, ctx.x);
@@ -314,8 +325,8 @@ interface WorkerInit {
   spotBeta: number;
   /** Areas the spotlight may land on. */
   spotAreas: string[];
-  /** Max dice a game may spend on yellow (0 = uncapped). */
-  capYellow: number;
+  /** Per-area dice budgets for a training game (empty = uncapped). */
+  caps: Caps;
 }
 
 interface TaskMsg {
@@ -383,7 +394,7 @@ if (!isMainThread) {
           init.spotProb > 0 && rng() < init.spotProb
             ? { area: init.spotAreas[Math.floor(rng() * init.spotAreas.length)], beta: init.spotBeta }
             : null;
-        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda, spot, init.capYellow));
+        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda, spot, init.caps));
       }
     }
     parentPort!.postMessage({ type: 'result', warm: msg.type === 'warm', episodes } satisfies ResultMsg);
@@ -579,6 +590,7 @@ async function main(): Promise<void> {
     spotlight: num('spotlight', 0),
     spotlightBeta: num('spotlight-beta', 0.01),
     spotlightAreas: args['spotlight-areas'],
+    cap: args.cap,
     capYellow: num('cap-yellow', 0),
     resume: args.resume,
     checkpoint: args.checkpoint ?? 'checkpoints/td-parallel.json',
@@ -592,6 +604,16 @@ async function main(): Promise<void> {
     if (id !== 'fox' && !v.areas.some((a) => a.id === id)) {
       throw new Error(`--spotlight-areas: unknown area '${id}'`);
     }
+  }
+
+  // --cap area:k[,area:k...]; --cap-yellow k is the legacy single-area form.
+  const caps: Caps = {};
+  if (cfg.capYellow > 0) caps.yellow = cfg.capYellow;
+  for (const part of (cfg.cap ?? '').split(',').filter(Boolean)) {
+    const [area, k] = part.split(':');
+    if (!v.areas.some((a) => a.id === area)) throw new Error(`--cap: unknown area '${area}'`);
+    if (!Number.isFinite(Number(k))) throw new Error(`--cap: bad budget in '${part}'`);
+    caps[area] = Number(k);
   }
 
   let net: Net;
@@ -632,7 +654,9 @@ async function main(): Promise<void> {
       (cfg.spotlight > 0
         ? `, spotlight ${cfg.spotlight} × β${cfg.spotlightBeta} on [${spotAreas.join(',')}]`
         : '') +
-      (cfg.capYellow > 0 ? `, yellow-dice cap ${cfg.capYellow}` : ''),
+      (Object.keys(caps).length > 0
+        ? `, dice caps ${Object.entries(caps).map(([a, k]) => `${a}:${k}`).join(',')}`
+        : ''),
   );
 
   const t0 = performance.now();
@@ -654,7 +678,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < cfg.evalGames; i++) {
       const rng = mulberry32((cfg.evalSeed + i * 2654435761) >>> 0);
       const s = newGame(v);
-      let yellowUsed = 0;
+      const used: Record<string, number> = {};
       for (;;) {
         const node = getPending(s, v);
         if (node.kind === 'over') break;
@@ -662,8 +686,8 @@ async function main(): Promise<void> {
           resolveChanceMut(s, v, rng);
           continue;
         }
-        const a = fs.choose(ctx, s, v, capActions(node.actions, cfg.capYellow, yellowUsed));
-        if (isYellowDieAction(a)) yellowUsed++;
+        const a = fs.choose(ctx, s, v, capActions(node.actions, caps, used));
+        countDie(a, used);
         applyActionMut(s, v, a);
       }
       const br = scoreState(s, v);
@@ -744,7 +768,7 @@ async function main(): Promise<void> {
           spotProb: cfg.spotlight,
           spotBeta: cfg.spotlightBeta,
           spotAreas,
-          capYellow: cfg.capYellow,
+          caps,
         } satisfies WorkerInit,
         execArgv: ['--import', 'tsx'],
       }),
