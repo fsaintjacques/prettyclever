@@ -7,6 +7,8 @@ const SWATCH: Record<string, string> = {
   green: 'var(--green)',
   orange: 'var(--orange)',
   purple: 'var(--purple)',
+  pink: 'var(--pink)',
+  silver: 'var(--silver)',
 };
 
 export function ScorePanel({

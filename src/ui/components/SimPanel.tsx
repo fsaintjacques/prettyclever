@@ -19,13 +19,31 @@ interface Run {
 }
 
 /** Chart series order matches the validated palette adjacency, not the sheet. */
-const CHART_ORDER: { id: string; label: string; color: string }[] = [
-  { id: 'yellow', label: 'Yellow', color: 'var(--ch-yellow)' },
-  { id: 'blue', label: 'Blue', color: 'var(--ch-blue)' },
-  { id: 'green', label: 'Green', color: 'var(--ch-green)' },
-  { id: 'purple', label: 'Purple', color: 'var(--ch-purple)' },
-  { id: 'orange', label: 'Orange', color: 'var(--ch-orange)' },
-];
+const CHART_ORDER = ['yellow', 'blue', 'green', 'purple', 'orange', 'pink', 'silver'];
+
+const CHART_COLOR: Record<string, string> = {
+  yellow: 'var(--ch-yellow)',
+  blue: 'var(--ch-blue)',
+  green: 'var(--ch-green)',
+  purple: 'var(--ch-purple)',
+  orange: 'var(--ch-orange)',
+  pink: 'var(--ch-pink)',
+  silver: 'var(--ch-silver)',
+};
+
+/** The variant's areas in chart order (unknown ids keep sheet order, neutral color). */
+function chartAreas(variant: VariantDef): { id: string; label: string; color: string }[] {
+  const ids = variant.areas.map((a) => a.id);
+  const ordered = [
+    ...CHART_ORDER.filter((id) => ids.includes(id)),
+    ...ids.filter((id) => !CHART_ORDER.includes(id)),
+  ];
+  return ordered.map((id) => ({
+    id,
+    label: variant.areas.find((a) => a.id === id)!.label,
+    color: CHART_COLOR[id] ?? 'var(--ink-3)',
+  }));
+}
 
 export function SimPanel({ variant }: { variant: VariantDef }) {
   const [strategy, setStrategy] = useState('greedy');
@@ -190,15 +208,17 @@ export function SimPanel({ variant }: { variant: VariantDef }) {
             <h4>Mean points by area</h4>
             <div className="area-bars">
               {(() => {
-                const max = Math.max(...CHART_ORDER.map((c) => current.stats!.meanAreas[c.id] ?? 0), 1);
-                return CHART_ORDER.map((c) => {
+                const series = chartAreas(variant);
+                const max = Math.max(...series.map((c) => current.stats!.meanAreas[c.id] ?? 0), 1);
+                return series.map((c) => {
                   const val = current.stats!.meanAreas[c.id] ?? 0;
+                  // A negative mean (Twice green) keeps its number; the bar just bottoms out.
                   return (
                     <div key={c.id} className="area-bar">
                       <span>{c.label}</span>
                       <span
                         className="bar"
-                        style={{ width: `${(100 * val) / max}%`, background: c.color }}
+                        style={{ width: `${(100 * Math.max(0, val)) / max}%`, background: c.color }}
                       />
                       <span className="num">{val.toFixed(1)}</span>
                     </div>

@@ -11,6 +11,8 @@ const PANEL_COLOR: Record<string, string> = {
   green: 'var(--ch-green)',
   orange: 'var(--ch-orange)',
   purple: 'var(--ch-purple)',
+  pink: 'var(--ch-pink)',
+  silver: 'var(--ch-silver)',
 };
 
 function barPath(x: number, y: number, w: number, h: number, r: number): string {

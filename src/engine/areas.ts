@@ -159,6 +159,7 @@ export function thresholdTrackArea(cfg: ThresholdTrackCfg): AreaDef {
     ui: {
       kind: 'track',
       columns: n,
+      crossTrack: true,
       cells: cfg.thresholds.map((t, i) => ({ label: `≥${t}`, bonus: bonuses[i] })),
       pointsScale: cfg.points.slice(1),
     },

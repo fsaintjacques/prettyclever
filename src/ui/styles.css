@@ -20,6 +20,8 @@
   --green: #58b94c;
   --orange: #f28c1e;
   --purple: #a875e8;
+  --pink: #e8679b;
+  --silver: #aab2c0;
   --fox: #e0524a;
   --paper: #f7f4ec;
   --paper-ink: #23262e;
@@ -31,6 +33,8 @@
   --ch-green: #48a34e;
   --ch-purple: #9a68d8;
   --ch-orange: #d47a26;
+  --ch-pink: #d0568c;
+  --ch-silver: #8892a2;
 
   --font-display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Quicksand', system-ui, sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -273,6 +277,12 @@ button:focus-visible {
 .die-purple {
   background: var(--purple);
 }
+.die-pink {
+  background: var(--pink);
+}
+.die-silver {
+  background: var(--silver);
+}
 
 .pips {
   position: absolute;
@@ -292,7 +302,8 @@ button:focus-visible {
 .die-blue .pip,
 .die-green .pip,
 .die-orange .pip,
-.die-purple .pip {
+.die-purple .pip,
+.die-pink .pip {
   background: #fff;
 }
 
@@ -441,6 +452,18 @@ button:focus-visible {
 }
 .area-purple {
   --area: var(--purple);
+  grid-column: 1 / -1;
+}
+.area-pink {
+  --area: var(--pink);
+}
+.area-silver {
+  --area: var(--silver);
+}
+
+/* Track areas always span the full sheet width (base green/orange/purple
+   already do via their id rules; this covers the Twice blue/green/pink). */
+.area.kind-track {
   grid-column: 1 / -1;
 }
 
@@ -608,6 +631,91 @@ button:focus-visible {
   visibility: hidden;
 }
 
+/* Silver grid: printed numbers take their row's color (:where keeps the
+   specificity below .cell.filled, whose ✕ stays ink). */
+.cell:where(.row-yellow) {
+  color: var(--yellow);
+}
+.cell:where(.row-blue) {
+  color: var(--blue);
+}
+.cell:where(.row-green) {
+  color: var(--green);
+}
+.cell:where(.row-pink) {
+  color: var(--pink);
+}
+
+/* Two-state cells (Twice yellow): state 1 rings the number, state 2 adds a
+   cross over the ring. */
+.cell .ring {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2.5px solid var(--paper-ink);
+  display: grid;
+  place-items: center;
+  position: relative;
+  font-size: 14px;
+  color: var(--paper-ink);
+}
+
+.cell .ring.crossed {
+  color: color-mix(in srgb, var(--paper-ink) 40%, var(--paper));
+}
+
+.cell .ring .ring-x {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--paper-ink);
+}
+
+/* Subtraction pairs (Twice green): the star after a pair holds its result. */
+.pair-star {
+  margin-top: 10px;
+  margin-right: 8px;
+  min-width: 26px;
+  height: 21px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--area);
+  border: 1.5px dashed color-mix(in srgb, var(--area) 65%, var(--sheet));
+  border-radius: 999px;
+}
+
+.pair-star.done {
+  color: var(--paper-ink);
+  background: var(--area);
+  border: 1.5px solid var(--area);
+}
+
+/* Silver grid chrome: per-row running score and column bonuses above. */
+.row-score {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-width: 26px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+.row-score.scored {
+  color: var(--ink);
+}
+
+.col-badge {
+  display: flex;
+  justify-content: center;
+}
+
 /* badges: bonuses & points printed on the sheet */
 
 .badge {
@@ -649,6 +757,16 @@ button:focus-visible {
 .badge.b-purple {
   background: var(--purple);
   color: #fff;
+  border: none;
+}
+.badge.b-pink {
+  background: var(--pink);
+  color: #fff;
+  border: none;
+}
+.badge.b-silver {
+  background: var(--silver);
+  color: var(--paper-ink);
   border: none;
 }
 .badge.b-fox {

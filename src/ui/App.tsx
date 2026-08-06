@@ -6,6 +6,7 @@ import {
   variants,
   type Action,
   type GameState,
+  type Placement,
   type VariantDef,
 } from '../engine';
 import { makeStrategy, strategiesFor } from '../strategies';
@@ -98,14 +99,45 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
   // --- interactive wiring -------------------------------------------------
   const head = state.pending[0];
 
+  // Return window: clicking a platter die returns it to the pool.
+  const returnByDie = useMemo(() => {
+    const map = new Map<number, Action>();
+    if (!interactive) return map;
+    for (const a of actions) if (a.t === 'return') map.set(a.die, a);
+    return map;
+  }, [actions, interactive]);
+
   const selectableDice = useMemo(() => {
     const set = new Set<number>();
     if (!interactive) return set;
     for (const a of actions) {
-      if (a.t === 'pick' || a.t === 'plus1' || a.t === 'passivePick') set.add(a.die);
+      if (a.t === 'pick' || a.t === 'plus1' || a.t === 'passivePick' || a.t === 'return') {
+        set.add(a.die);
+      }
     }
     return set;
   }, [actions, interactive]);
+
+  // Placement-carrying bonus decisions (free ? marks, white/silver chain marks).
+  const placementBonuses = useMemo(
+    () =>
+      head?.t === 'free' || head?.t === 'silverMark'
+        ? actions.filter(
+            (a): a is Extract<Action, { t: 'bonus' }> & { placement: Placement } =>
+              a.t === 'bonus' && a.placement !== undefined,
+          )
+        : [],
+    [actions, head],
+  );
+  // When every option targets its own cell (silver ?, yellow ?, chain-mark row
+  // choice) the sheet cells glow like crossAny; a track's free write keeps the
+  // choice in the action banner instead (one cell, many values).
+  const bonusCellsUnique = useMemo(
+    () =>
+      new Set(placementBonuses.map((a) => `${a.placement.area}:${a.placement.cell}`)).size ===
+      placementBonuses.length,
+    [placementBonuses],
+  );
 
   const activeCells = useMemo(() => {
     const map = new Map<string, Action>();
@@ -114,19 +146,28 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
       if (a.t === 'bonus' && a.cell !== undefined && head?.t === 'crossAny') {
         map.set(`${head.area}:${a.cell}`, a);
       }
+      if (
+        a.t === 'bonus' &&
+        a.placement &&
+        bonusCellsUnique &&
+        (head?.t === 'free' || head?.t === 'silverMark')
+      ) {
+        map.set(`${a.placement.area}:${a.placement.cell}`, a);
+      }
       if ((a.t === 'pick' || a.t === 'plus1' || a.t === 'passivePick') && a.die === selectedDie) {
         const p = a.t === 'pick' ? a.placement : a.placement;
         if (p) map.set(`${p.area}:${p.cell}`, a);
       }
     }
     return map;
-  }, [actions, selectedDie, head, interactive]);
+  }, [actions, selectedDie, head, interactive, bonusCellsUnique]);
 
   const find = (pred: (a: Action) => boolean) => actions.find(pred);
   const rerollAction = find((a) => a.t === 'reroll');
   const skipAction = find((a) => a.t === 'skip');
   const endTurnAction = find((a) => a.t === 'endTurn');
   const passiveSkipAction = find((a) => a.t === 'passiveSkip');
+  const proceedAction = find((a) => a.t === 'proceed');
   const wastedPick =
     selectedDie !== null
       ? find((a) => a.t === 'pick' && a.die === selectedDie && !a.placement)
@@ -141,15 +182,23 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
       ? ''
       : head?.t === 'crossAny'
         ? `Bonus: cross any glowing ${head.area} cell.`
-        : head?.t === 'choice'
-          ? head.label
-          : selectedDie !== null && activeCells.size === 0
-            ? 'No legal placement for this die.'
-            : selectedDie !== null
-              ? 'Now click a glowing cell.'
-              : selectableDice.size > 0
-                ? 'Click a die to see where it can go.'
-                : '';
+        : head?.t === 'silverMark'
+          ? `Platter chain: choose a silver row for the ${head.value}.`
+          : head?.t === 'free'
+            ? bonusCellsUnique
+              ? `Bonus: mark any glowing ${head.area} cell.`
+              : `Bonus: choose a value to write in ${head.area}.`
+            : head?.t === 'choice'
+              ? head.label
+              : state.phase === 'preRoll'
+                ? 'Return window: click a platter die to take it back, or roll on.'
+                : selectedDie !== null && activeCells.size === 0
+                  ? 'No legal placement for this die.'
+                  : selectedDie !== null
+                    ? 'Now click a glowing cell.'
+                    : selectableDice.size > 0
+                      ? 'Click a die to see where it can go.'
+                      : '';
 
   return (
     <div className="main">
@@ -159,7 +208,11 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
           variant={variant}
           selectable={selectableDice}
           selected={selectedDie}
-          onDieClick={(i) => setSelectedDie((d) => (d === i ? null : i))}
+          onDieClick={(i) => {
+            const ret = returnByDie.get(i);
+            if (ret) session.act(ret);
+            else setSelectedDie((d) => (d === i ? null : i));
+          }}
         />
 
         {node.kind === 'over' ? (
@@ -171,14 +224,24 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
               New game
             </button>
           </div>
+        ) : head?.t === 'choice' && interactive ? (
+          <div className="banner" style={{ marginBottom: 12 }}>
+            <span>{head.label}:</span>
+            {choiceOptions.map((a) => (
+              <button key={a.option} className="btn" onClick={() => session.act(a)}>
+                {describeEffect(head.options[a.option])}
+              </button>
+            ))}
+          </div>
         ) : (
-          head?.t === 'choice' &&
+          head?.t === 'free' &&
+          !bonusCellsUnique &&
           interactive && (
             <div className="banner" style={{ marginBottom: 12 }}>
-              <span>{head.label}:</span>
-              {choiceOptions.map((a) => (
-                <button key={a.option} className="btn" onClick={() => session.act(a)}>
-                  {describeEffect(head.options[a.option])}
+              <span>Bonus — {describeEffect(head)}:</span>
+              {placementBonuses.map((a, i) => (
+                <button key={i} className="btn" onClick={() => session.act(a)}>
+                  write {a.placement.value}
                 </button>
               ))}
             </div>
@@ -210,6 +273,11 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
               {passiveSkipAction && (
                 <button className="btn" onClick={() => session.act(passiveSkipAction)}>
                   Decline
+                </button>
+              )}
+              {proceedAction && (
+                <button className="btn primary" onClick={() => session.act(proceedAction)}>
+                  Roll on ({state.returns} return{state.returns === 1 ? '' : 's'} left)
                 </button>
               )}
               {endTurnAction && (

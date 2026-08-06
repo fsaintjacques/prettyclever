@@ -67,6 +67,8 @@ export interface AreaUi {
   twoState?: boolean;
   /** pointsScale applies to each row group independently (Twice silver). */
   scalePerRow?: boolean;
+  /** Track cells hold crosses, not written values (base green): filled renders ✕. */
+  crossTrack?: boolean;
   cells: {
     label: string | null; // '3', '≥4', '×2' ... null = free write slot
     pre?: boolean; // pre-printed cross
