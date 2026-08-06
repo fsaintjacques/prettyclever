@@ -21,12 +21,18 @@
  *  - --features v1|v2|twice selects the feature set/policy — and with it the
  *    variant, value scale and warm-start teacher (v1/v2: the committed nets on
  *    thats-pretty-clever; twice: the greedy baseline on twice-as-clever).
+ *  - --spotlight <p> plays that fraction of episodes with an "area spotlight":
+ *    the behavior policy gets +--spotlight-beta per filled cell of one random
+ *    area from --spotlight-areas (default: all), generating coherent
+ *    trajectories through regions the greedy argmax never visits. Targets
+ *    stay unbiased; evals are always spotlight-free.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
+  applyAction,
   applyActionMut,
   getPending,
   getVariant,
@@ -156,6 +162,76 @@ interface EpisodeSamples {
   score: number;
 }
 
+/**
+ * Spotlight exploration: in a fraction of episodes the *behavior* policy gets
+ * a temporary bonus of `beta` (value-scale units) per filled cell in one
+ * randomly chosen area, producing coherent whole-game trajectories that
+ * develop regions the greedy argmax abandons (uniform ε only ever deviates
+ * for a single step, which argmax immediately undoes). TD targets stay the
+ * unbiased V of the states actually visited — the same no-importance-sampling
+ * regime as ε-greedy.
+ */
+interface Spot {
+  area: string;
+  beta: number;
+}
+
+function filledCells(s: GameState, area: string): number {
+  const cells = s.areas[area];
+  let n = 0;
+  for (let i = 0; i < cells.length; i++) if (cells[i] !== 0) n++;
+  return n;
+}
+
+function rawValue(fs: FeatureSet, ctx: EvalCtx, s: GameState, v: VariantDef): number {
+  if (s.phase === 'over') return scoreState(s, v).total / fs.scale;
+  fs.extract(s, v, ctx.x);
+  return forward(ctx.net, ctx.x, ctx.h1, ctx.h2);
+}
+
+/** Biased afterstate value: resolve pending decisions by the same biased argmax. */
+function spotValue(fs: FeatureSet, ctx: EvalCtx, s: GameState, v: VariantDef, spot: Spot): number {
+  let cur = s;
+  let guard = 0;
+  while (cur.pending.length > 0 && guard++ < 64) {
+    const node = getPending(cur, v);
+    if (node.kind !== 'decision') break;
+    let best: GameState | null = null;
+    let bestVal = -Infinity;
+    for (const a of node.actions) {
+      const ns = applyAction(cur, v, a);
+      const val = rawValue(fs, ctx, ns, v) + spot.beta * filledCells(ns, spot.area);
+      if (val > bestVal) {
+        bestVal = val;
+        best = ns;
+      }
+    }
+    if (!best) break;
+    cur = best;
+  }
+  return rawValue(fs, ctx, cur, v) + spot.beta * filledCells(cur, spot.area);
+}
+
+function chooseSpot(
+  fs: FeatureSet,
+  ctx: EvalCtx,
+  s: GameState,
+  v: VariantDef,
+  actions: Action[],
+  spot: Spot,
+): Action {
+  let best = actions[0];
+  let bestVal = -Infinity;
+  for (const a of actions) {
+    const val = spotValue(fs, ctx, applyAction(s, v, a), v, spot);
+    if (val > bestVal) {
+      bestVal = val;
+      best = a;
+    }
+  }
+  return best;
+}
+
 function playEpisode(
   fs: FeatureSet,
   v: VariantDef,
@@ -163,6 +239,7 @@ function playEpisode(
   rng: () => number,
   epsilon: number,
   lambda: number,
+  spot: Spot | null,
 ): EpisodeSamples {
   const s = newGame(v);
   const states: Sparse[] = [];
@@ -176,6 +253,7 @@ function playEpisode(
     }
     let a: Action;
     if (epsilon > 0 && rng() < epsilon) a = node.actions[Math.floor(rng() * node.actions.length)];
+    else if (spot) a = chooseSpot(fs, ctx, s, v, node.actions, spot);
     else a = fs.choose(ctx, s, v, node.actions);
     applyActionMut(s, v, a);
     if (s.phase !== 'over') {
@@ -196,6 +274,12 @@ interface WorkerInit {
   features: string;
   seed: number;
   lambda: number;
+  /** Fraction of self-play episodes played with an area spotlight (0 = off). */
+  spotProb: number;
+  /** Behavior-policy bonus per filled spotlight-area cell, in value-scale units. */
+  spotBeta: number;
+  /** Areas the spotlight may land on. */
+  spotAreas: string[];
 }
 
 interface TaskMsg {
@@ -259,7 +343,11 @@ if (!isMainThread) {
       for (let i = 0; i < msg.count; i++) {
         const ep = msg.epStart + i;
         const rng = mulberry32((init.seed ^ (ep * 2654435761 + 7)) >>> 0);
-        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda));
+        const spot: Spot | null =
+          init.spotProb > 0 && rng() < init.spotProb
+            ? { area: init.spotAreas[Math.floor(rng() * init.spotAreas.length)], beta: init.spotBeta }
+            : null;
+        episodes.push(playEpisode(fs, v, ctx, rng, msg.epsilon, init.lambda, spot));
       }
     }
     parentPort!.postMessage({ type: 'result', warm: msg.type === 'warm', episodes } satisfies ResultMsg);
@@ -408,7 +496,14 @@ interface Checkpoint {
   adam: { m: number[][]; v: number[][]; t: number };
   bestMean: number;
   bestParams: TdNetParams | null;
-  curve: { ep: number; mean: number; std: number; tdErr: number; sec: number }[];
+  curve: {
+    ep: number;
+    mean: number;
+    std: number;
+    tdErr: number;
+    sec: number;
+    areas?: Record<string, number>;
+  }[];
 }
 
 async function main(): Promise<void> {
@@ -445,6 +540,9 @@ async function main(): Promise<void> {
     hidden: num('hidden', 128),
     warmGames: num('warm-games', 4000),
     lrWarm: num('lr-warm', 1e-3),
+    spotlight: num('spotlight', 0),
+    spotlightBeta: num('spotlight-beta', 0.01),
+    spotlightAreas: args['spotlight-areas'],
     resume: args.resume,
     checkpoint: args.checkpoint ?? 'checkpoints/td-parallel.json',
     out: args.out ?? 'checkpoints/tdnet-weights-parallel.ts',
@@ -452,6 +550,10 @@ async function main(): Promise<void> {
   const fs = FEATURE_SETS[cfg.features];
   if (!fs) throw new Error(`unknown feature set '${cfg.features}' (${Object.keys(FEATURE_SETS).join(' | ')})`);
   const v = getVariant(fs.variantId);
+  const spotAreas = cfg.spotlightAreas ? cfg.spotlightAreas.split(',') : v.areas.map((a) => a.id);
+  for (const id of spotAreas) {
+    if (!v.areas.some((a) => a.id === id)) throw new Error(`--spotlight-areas: unknown area '${id}'`);
+  }
 
   let net: Net;
   let trainer: Trainer;
@@ -487,7 +589,10 @@ async function main(): Promise<void> {
   }
   let bestEpisode = episode;
   console.log(
-    `${cfg.workers} workers × chunk ${cfg.chunk}, features ${cfg.features}, target ${cfg.episodes}, patience ${cfg.patience}`,
+    `${cfg.workers} workers × chunk ${cfg.chunk}, features ${cfg.features}, target ${cfg.episodes}, patience ${cfg.patience}` +
+      (cfg.spotlight > 0
+        ? `, spotlight ${cfg.spotlight} × β${cfg.spotlightBeta} on [${spotAreas.join(',')}]`
+        : ''),
   );
 
   const t0 = performance.now();
@@ -500,10 +605,12 @@ async function main(): Promise<void> {
   const lrAt = (ep: number) =>
     ep < cfg.episodes * 0.6 ? cfg.lr : ep < cfg.episodes * 0.85 ? cfg.lr / 2 : cfg.lr / 4;
 
-  const evalNet = (): { mean: number; std: number } => {
+  const evalNet = (): { mean: number; std: number; areas: Record<string, number> } => {
     const ctx = createEvalCtx(net);
     let sum = 0;
     let sq = 0;
+    const areaSum: Record<string, number> = { fox: 0 };
+    for (const a of v.areas) areaSum[a.id] = 0;
     for (let i = 0; i < cfg.evalGames; i++) {
       const rng = mulberry32((cfg.evalSeed + i * 2654435761) >>> 0);
       const s = newGame(v);
@@ -516,12 +623,15 @@ async function main(): Promise<void> {
         }
         applyActionMut(s, v, fs.choose(ctx, s, v, node.actions));
       }
-      const sc = scoreState(s, v).total;
-      sum += sc;
-      sq += sc * sc;
+      const br = scoreState(s, v);
+      sum += br.total;
+      sq += br.total * br.total;
+      for (const a of v.areas) areaSum[a.id] += br.areas[a.id];
+      areaSum.fox += br.foxPoints;
     }
     const mean = sum / cfg.evalGames;
-    return { mean, std: Math.sqrt(Math.max(0, sq / cfg.evalGames - mean * mean)) };
+    const areas = Object.fromEntries(Object.entries(areaSum).map(([k, x]) => [k, x / cfg.evalGames]));
+    return { mean, std: Math.sqrt(Math.max(0, sq / cfg.evalGames - mean * mean)), areas };
   };
 
   const fullParams = (): TdNetParams => ({
@@ -554,12 +664,15 @@ async function main(): Promise<void> {
   let lastEvalAt = episode;
 
   const runEval = () => {
-    const { mean, std } = evalNet();
+    const { mean, std, areas } = evalNet();
     const sec = elapsedSec();
-    curve.push({ ep: episode, mean, std, tdErr: tdErrAvg, sec });
+    curve.push({ ep: episode, mean, std, tdErr: tdErrAvg, sec, areas });
     const star = mean > bestMean ? '  ← best' : '';
+    const areaStr = Object.entries(areas)
+      .map(([k, x]) => `${k.slice(0, 2)} ${x.toFixed(1)}`)
+      .join(' ');
     console.log(
-      `ep ${String(episode).padStart(6)}  eval ${mean.toFixed(1)} ± ${std.toFixed(1)}  tdErr ${tdErrAvg.toFixed(4)}  ${sec.toFixed(0)}s  (${rate().toFixed(0)} eps/s)${star}`,
+      `ep ${String(episode).padStart(6)}  eval ${mean.toFixed(1)} ± ${std.toFixed(1)}  [${areaStr}]  tdErr ${tdErrAvg.toFixed(4)}  ${sec.toFixed(0)}s  (${rate().toFixed(0)} eps/s)${star}`,
     );
     if (mean > bestMean) {
       bestMean = mean;
@@ -581,7 +694,14 @@ async function main(): Promise<void> {
     { length: cfg.workers },
     () =>
       new Worker(workerFile, {
-        workerData: { features: cfg.features, seed: cfg.seed, lambda: cfg.lambda } satisfies WorkerInit,
+        workerData: {
+          features: cfg.features,
+          seed: cfg.seed,
+          lambda: cfg.lambda,
+          spotProb: cfg.spotlight,
+          spotBeta: cfg.spotlightBeta,
+          spotAreas,
+        } satisfies WorkerInit,
         execArgv: ['--import', 'tsx'],
       }),
   );
