@@ -125,7 +125,7 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **294.1 ± 34.9** | 339 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
+| **td-net** | **296.5 ± 35.9** | 340 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
@@ -147,9 +147,9 @@ economy (239.5); at k=8 with a fox-targeted spotlight (`--spotlight-areas
 free-running — and training to 750k reached 287.6 frozen / 286.2 held-out,
 where the curve flattened. A final polish leg (ε annealed 0.08 → 0.02 and
 lr halved, once the regime no longer needed exploration pressure) added
-~8 more. Continued polishing to 1.48M episodes (ε 0.01, 400-game evals
-to cut the winner's-curse bias in best-net selection) reached
-**297.6 frozen / 294.1 / 291.8 held-out** (seeds 11/777), still climbing.
+~8 more. Continued polishing to 1.77M episodes (ε 0.01, 400-game evals
+to cut the winner's-curse bias in best-net selection) crossed 300 on the
+frozen eval: **300.8 frozen / 296.5 / 296.2 held-out** (seeds 11/777).
 The learned regime is exactly the strategy the Doppelt
 community folklore describes: balance every area, keep the minimum high
 (blue, ~30 — one Reddit player's advice was literally "28 should be your
