@@ -61,11 +61,11 @@ import {
 import {
   chooseByValueTwice,
   extractFeaturesTwice,
+  makeTdNetTwice,
   TDT_FEATURES,
   TDT_SCALE,
 } from '../src/strategies/tdnet-twice';
 import { chooseByValue2, extractFeaturesV2, makeTdNetV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
-import { makeGreedy } from '../src/strategies/greedy';
 import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
 import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
 import type { Strategy } from '../src/strategies/types';
@@ -107,8 +107,6 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
     choose: chooseByValue2,
     warmTeacher: () => makeTdNetV2({ params: TDNETV2_WEIGHTS }),
   },
-  // No strong committed teacher yet for Twice — warm from the variant-generic
-  // greedy baseline; self-play does the heavy lifting.
   twice: {
     variantId: 'twice-as-clever',
     n: TDT_FEATURES,
@@ -116,7 +114,7 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
     constName: 'TDNET_TWICE_WEIGHTS',
     extract: extractFeaturesTwice,
     choose: chooseByValueTwice,
-    warmTeacher: () => makeGreedy(),
+    warmTeacher: () => makeTdNetTwice(),
   },
 };
 
