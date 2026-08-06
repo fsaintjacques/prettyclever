@@ -113,26 +113,29 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **217.1 ± 19.9** | 242 | 20 | 252 face-blind features, 240k episodes; curve had NOT plateaued — headroom is real |
+| **td-net** | **220.5 ± 19.5** | 244 | 20 | 252 face-blind features, 500k episodes — the last 260k with `--spotlight 0.2` on the non-yellow areas |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
 
 Rating table tops out at 320 "Twice as clever!". The net's signature discovery:
 yellow's convex crossing table (10 crosses = 165) is the sheet's dominant
-engine — it pours 137.6 mean points into yellow (greedy: 7.2), fed by silver
-platter-chains and colored ?s. Known weakness: it under-protects the fox
-minimum (minArea ~6–9). Training checkpoint in `checkpoints/td-twice.json`
-(resumable with pinned ε and halved lr for the next leg).
+engine — it pours ~140 mean points into yellow (greedy: 7.2), fed by silver
+platter-chains and colored ?s. The first 240k episodes collapsed onto that
+engine so hard that a yellow-forbidden ablation scored 116 — below flat
+Monte-Carlo — i.e. the value function knew nothing outside its own
+trajectory distribution. Spotlight episodes (biased behavior toward a random
+neglected area, unbiased targets) recovered real breadth: +4.5 points
+overall (216.4 → 220.5 held-out), blue 13.6 → 16.5, pink 9.0 → 10.7, fox
+points 6.2 → 7.4, funded by ~6 silver points — and the ablation rose to 124.
+Green remains the unsolved weakness. Training checkpoint in
+`checkpoints/td-twice-spot.json` (curve still creeping at 500k).
 
 Hindsight efficiency (same instrument as the base game, 20 worlds, beam
-512): td-net 210.2 vs clairvoyant 247.3 — **85.3%**, with worlds as low as
-72%. The twice net sits measurably farther from its ceiling than the base
-net (90.8%), consistent with the yellow-focused self-play collapse: a
-yellow-forbidden ablation scores 116 — *below* flat Monte-Carlo's 159 —
-so the value function has no competence outside its own trajectory
-distribution. The trainer's `--spotlight` mode (biased behavior episodes
-toward neglected areas, unbiased targets) exists to heal exactly this.
+512): the spotlight net scores 216.8 vs a clairvoyant 250.6 — **86.6%**
+(the pre-spotlight net measured 85.3%). The twice net still sits measurably
+farther from its ceiling than the base net (90.8%), so the remaining gap —
+green above all — is worth further spotlight legs or deeper search.
 
 ## Variants
 
