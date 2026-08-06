@@ -101,8 +101,13 @@ and all resist further training (early-stops fire, late evals degrade).
 One-ply afterstate argmax with a TD-learned value function of this family
 appears to be worth ~250 points; the remaining distance to perfect play
 lives in multi-ply search and/or better training signal, not capacity.
-A per-seed clairvoyant upper bound (hindsight solver over predetermined
-dice) is the natural next instrument to measure what actually remains.
+
+**How much actually remains: ~9%.** `scripts/hindsight.ts` determinizes a
+seed into an action-independent face table (a clairvoyant "possible world"),
+solves it with TD-net-guided beam search, and replays the same world with a
+normal strategy. Over 20 worlds at beam 512, td-net scores 252.4 against a
+clairvoyant 278.4 — **90.8% hindsight efficiency**. The beam result is a
+lower bound on the true optimum, so real headroom is at least ~26 points.
 
 ### Twice as Clever (`--variant twice-as-clever`)
 
@@ -119,6 +124,15 @@ engine — it pours 137.6 mean points into yellow (greedy: 7.2), fed by silver
 platter-chains and colored ?s. Known weakness: it under-protects the fox
 minimum (minArea ~6–9). Training checkpoint in `checkpoints/td-twice.json`
 (resumable with pinned ε and halved lr for the next leg).
+
+Hindsight efficiency (same instrument as the base game, 20 worlds, beam
+512): td-net 210.2 vs clairvoyant 247.3 — **85.3%**, with worlds as low as
+72%. The twice net sits measurably farther from its ceiling than the base
+net (90.8%), consistent with the yellow-focused self-play collapse: a
+yellow-forbidden ablation scores 116 — *below* flat Monte-Carlo's 159 —
+so the value function has no competence outside its own trajectory
+distribution. The trainer's `--spotlight` mode (biased behavior episodes
+toward neglected areas, unbiased targets) exists to heal exactly this.
 
 ## Variants
 
