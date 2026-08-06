@@ -102,6 +102,18 @@ One-ply afterstate argmax with a TD-learned value function of this family
 appears to be worth ~250 points; the remaining distance to perfect play
 lives in multi-ply search and/or better training signal, not capacity.
 
+**And it is not an exploration basin either** — the obvious objection after
+the Twice as Clever result below, since all three architectures shared one
+self-play procedure. Re-tested with the same machinery that broke Twice's
+local optimum: a fox spotlight from the committed net reproduces the
+incumbent's area allocation almost digit for digit (yellow 19.9 vs 19.8,
+blue 50.8 vs 49.8, fox 71.0 vs 70.6) and lands at 250.7 / 248.2 held-out —
+a statistical tie, no reallocation. Forcing one with a dice cap
+(`--cap blue:5,green:5,orange:5`) makes it strictly worse: 221 under the
+cap, 227.9 with the cap lifted, and the net does not return to blue-heavy
+play afterwards. The base sheet's allocation is earned, not inherited from
+where self-play happened to start.
+
 **How much actually remains: ~9%.** `scripts/hindsight.ts` determinizes a
 seed into an action-independent face table (a clairvoyant "possible world"),
 solves it with TD-net-guided beam search, and replays the same world with a
