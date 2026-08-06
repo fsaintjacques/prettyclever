@@ -125,13 +125,13 @@ lower bound on the true optimum, so real headroom is at least ~26 points.
 
 | strategy | mean ± std | p90 | ms/game | notes |
 |---|---|---|---|---|
-| **td-net** | **289.1 ± 32.9** | 330 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
+| **td-net** | **292.4 ± 35.3** | 338 | 20 | fox-economy regime: yellow-cap curriculum + fox spotlight (see below) |
 | mc | 159.2 ± 23.9 | 193 | ~100 | flat Monte-Carlo |
 | greedy | 101.8 ± 23.0 | 132 | ~1 | score-greedy (base-game shaping terms don't apply here) |
 | random | 63.6 ± 15.1 | 84 | 0.1 | floor |
 
 Rating table tops out at 320 "Twice as clever!" — the net now clears it in
-~14% of games (p90 sits above it; max observed 408).
+~16% of games (p90 sits above it; max observed 408).
 
 **The yellow engine was a ~55-point local optimum.** Plain self-play TD
 converged to pouring ~140 points into yellow's convex crossing table
@@ -147,7 +147,8 @@ economy (239.5); at k=8 with a fox-targeted spotlight (`--spotlight-areas
 free-running — and training to 750k reached 287.6 frozen / 286.2 held-out,
 where the curve flattened. A final polish leg (ε annealed 0.08 → 0.02 and
 lr halved, once the regime no longer needed exploration pressure) added
-~3 more: **292.7 frozen / 289.1 / 291.4 held-out** (seeds 11/777).
+~8 more, still climbing when the run was stopped at 970k:
+**295.3 frozen / 292.4 / 290.7 held-out** (seeds 11/777).
 The learned regime is exactly the strategy the Doppelt
 community folklore describes: balance every area, keep the minimum high
 (blue, ~30 — one Reddit player's advice was literally "28 should be your

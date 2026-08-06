@@ -82,7 +82,7 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // pure afterstate argmax over the twice-specific face-blind features.
     // Trained with the yellow-cap curriculum (--cap-yellow 8) + fox spotlight,
     // which escaped the yellow-max local optimum into the fox-economy regime:
-    // 289.1 ± 32.9 (seed 11) / 291.4 ± 33.6 (seed 777), 500 games each.
+    // 292.4 ± 35.3 (seed 11) / 290.7 ± 36.6 (seed 777), 500 games each.
     'td-net': (opts) => makeTdNetTwice(opts as never),
   },
 };
