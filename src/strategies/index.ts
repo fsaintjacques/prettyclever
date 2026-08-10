@@ -1,5 +1,6 @@
 import { makeBonusman } from './bonusman';
 import { makeExpectimax } from './expectimax';
+import { makeTdNetBonus } from './tdnet-bonus';
 import { makeGreedy } from './greedy';
 import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
@@ -76,6 +77,10 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // At an equal 240k-episode budget: 249.7 ± 22.4 / 249.9 ± 23.8 (seeds 11/777)
     // vs v1's 250.7 / 250.1 — the face features are a wash at this width.
     'td-net-v2': (opts) => makeTdNetV2(opts as never),
+    // v1 features + explicit bonus-economy block ("reward chasing"): banked
+    // unlocks, one-away bonus groups per kind, track pull toward bonus slots
+    // (scripts/train-td-parallel.ts --features v1bonus).
+    'td-net-bonus': (opts) => makeTdNetBonus(opts as never),
     // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
     // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
     'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),

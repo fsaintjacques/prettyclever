@@ -29,7 +29,6 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
   applyAction,
@@ -66,6 +65,11 @@ import {
   TDT_SCALE,
 } from '../src/strategies/tdnet-twice';
 import { chooseByValue2, extractFeaturesV2, makeTdNetV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
+import {
+  chooseByValueBonus,
+  extractFeaturesBonus,
+  TD_BONUS_FEATURES,
+} from '../src/strategies/tdnet-bonus';
 import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
 import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
 import type { Strategy } from '../src/strategies/types';
@@ -115,6 +119,19 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
     extract: extractFeaturesTwice,
     choose: chooseByValueTwice,
     warmTeacher: () => makeTdNetTwice(),
+  },
+  // v1 + explicit bonus-economy block ("reward chasing"): banked unlocks,
+  // one-away bonus groups per kind, track pull toward bonus slots. Warm-starts
+  // from the committed v1 net's play (the teacher only generates games — its
+  // features need not match).
+  v1bonus: {
+    variantId: 'thats-pretty-clever',
+    n: TD_BONUS_FEATURES,
+    scale: 300,
+    constName: 'TDNET_BONUS_WEIGHTS',
+    extract: extractFeaturesBonus,
+    choose: chooseByValueBonus,
+    warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
   },
 };
 
@@ -754,11 +771,21 @@ async function main(): Promise<void> {
   const startEp = episode;
   const rate = () => (episode - startEp) / Math.max(1, elapsedSec());
 
-  const workerFile = fileURLToPath(import.meta.url);
+  // Worker threads do not reliably inherit the tsx loader across Node
+  // versions, so boot each worker through a data-URL shim that registers tsx
+  // in-thread before importing this .ts file.
+  const tsxApi = import.meta.resolve('tsx/esm/api');
+  const workerBootstrap = new URL(
+    `data:text/javascript,${encodeURIComponent(
+      `import { register } from ${JSON.stringify(tsxApi)}; register(); await import(${JSON.stringify(
+        import.meta.url,
+      )});`,
+    )}`,
+  );
   const workers = Array.from(
     { length: cfg.workers },
     () =>
-      new Worker(workerFile, {
+      new Worker(workerBootstrap, {
         workerData: {
           features: cfg.features,
           seed: cfg.seed,
