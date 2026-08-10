@@ -87,7 +87,7 @@ function NewGame({ reset }: { reset: (seed?: number) => void }) {
 }
 
 function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantDef }) {
-  const session = useGame(variant);
+  const session = useGame(variant, true, `${mode}:${variant.id}`);
   const { state } = session;
   const node = useMemo(() => getPending(state, variant), [state, variant]);
   const score = useMemo(() => scoreState(state, variant), [state, variant]);

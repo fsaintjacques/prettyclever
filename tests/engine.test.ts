@@ -284,3 +284,39 @@ describe('full games', () => {
     }
   });
 });
+
+describe('mulberry32 state save/restore', () => {
+  it('setState resumes the exact stream mid-way', () => {
+    const rng = mulberry32(1234);
+    rng();
+    rng();
+    const saved = rng.getState();
+    const ahead = [rng(), rng(), rng()];
+
+    const resumed = mulberry32(1234);
+    resumed.setState(saved);
+    expect([resumed(), resumed(), resumed()]).toEqual(ahead);
+  });
+
+  it('a JSON round-tripped state plus restored rng replays the same continuation', () => {
+    // The uninterrupted game: roll, skip, roll again.
+    const control = mulberry32(77);
+    const c = newGame(thatsPrettyClever);
+    resolveChanceMut(c, thatsPrettyClever, control);
+    const c2 = applyAction(c, thatsPrettyClever, { t: 'skip' });
+    resolveChanceMut(c2, thatsPrettyClever, control);
+
+    // The same game snapshotted after the first roll (as the browser would
+    // persist it) and resumed with a fresh rng set to the saved state.
+    const rng = mulberry32(77);
+    const s = newGame(thatsPrettyClever);
+    resolveChanceMut(s, thatsPrettyClever, rng);
+    const frozen = JSON.parse(JSON.stringify(s)) as GameState;
+    const restored = mulberry32(77);
+    restored.setState(rng.getState());
+    const s2 = applyAction(frozen, thatsPrettyClever, { t: 'skip' });
+    resolveChanceMut(s2, thatsPrettyClever, restored);
+
+    expect(s2.faces).toEqual(c2.faces);
+  });
+});
