@@ -30,8 +30,8 @@ function MiniArea({ area }: { area: string }) {
 /**
  * A strategy's chosen action, in dice-first shorthand:
  *   - the die chip alone when it lands in its own area,
- *   - blue plays blue+white: "[blue] (total)", or "[blue] (+[white] = total)"
- *     when it's the wild being spent there,
+ *   - blue plays blue+wild, so both operands show, the taken die first:
+ *     "[blue] + [white] = total" or "[white] + [blue] = total",
  *   - "white → ▪" when the wild is spent on a color section,
  * and describeAction's text for everything that isn't a die pick.
  */
@@ -57,28 +57,22 @@ function ChoiceLabel({
       );
     }
     const p = a.placement;
-    if (p.area === 'blue' && (color === 'blue' || color === 'white')) {
-      // Blue always plays blue+white; the cross-grid placement value is just
-      // a mark, so the combined total comes from the area's effectiveValue.
+    const blueDie = variant.colors.indexOf('blue');
+    const wildDie = variant.wild ? variant.colors.indexOf(variant.wild) : -1;
+    if (p.area === 'blue' && blueDie >= 0 && wildDie >= 0 && (a.die === blueDie || a.die === wildDie)) {
+      // Blue always plays blue+wild; the placement value is just a mark, so the
+      // combined total comes from the area's effectiveValue. The die that leads
+      // is the one actually taken — it leaves the pool and sends every lower
+      // die to the platter, which is the whole difference between the two.
       const total = areaById(variant, 'blue').effectiveValue(facesByColor(state, variant), color);
-      if (color === 'blue') {
-        return (
-          <span className="choice">
-            {prefix}
-            <MiniDie color={color} face={state.faces[a.die]} />
-            <span>({total})</span>
-          </span>
-        );
-      }
-      // The wild spent on blue: it's the blue slot that gets marked.
-      const blue = variant.colors.indexOf('blue');
+      const partner = a.die === blueDie ? wildDie : blueDie;
       return (
         <span className="choice">
           {prefix}
-          <MiniDie color="blue" face={blue >= 0 ? state.faces[blue] : 0} />
-          <span>(+</span>
           <MiniDie color={color} face={state.faces[a.die]} />
-          <span>= {total})</span>
+          <span className="hint">+</span>
+          <MiniDie color={variant.colors[partner]} face={state.faces[partner]} />
+          <span>= {total}</span>
         </span>
       );
     }
