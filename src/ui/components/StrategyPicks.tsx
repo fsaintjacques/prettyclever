@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  applyAction,
   areaById,
   facesByColor,
+  getPending,
   mulberry32,
   type Action,
+  type AreaDef,
+  type Effect,
   type GameState,
   type VariantDef,
 } from '../../engine';
@@ -27,6 +31,140 @@ function MiniArea({ area }: { area: string }) {
   return <span className={`mini-area die-${area}`} title={`${area} area`} />;
 }
 
+/** ui-cell index of engine cell `cell` (inverse of describe's uiToEngine). */
+function uiIndexOf(area: AreaDef, cell: number): number {
+  const cells = area.ui.cells;
+  if (cells.length === area.size) return cell;
+  let n = -1;
+  for (let i = 0; i < cells.length; i++) {
+    if (!cells[i].void && ++n === cell) return i;
+  }
+  return -1;
+}
+
+/**
+ * "col 3" for the chosen cell when another currently-available option carries
+ * the same printed label in the same grid area (base yellow: every value
+ * appears twice) — the column pins down which one. Silver names its row via
+ * describeAction already; track slots are positional and never ambiguous.
+ */
+function columnHint(
+  variant: VariantDef,
+  areaId: string,
+  cell: number,
+  optionCells: number[],
+): string | null {
+  const area = areaById(variant, areaId);
+  if (area.ui.kind !== 'grid' || area.silverRows) return null;
+  const ui = uiIndexOf(area, cell);
+  if (ui < 0) return null;
+  const label = area.ui.cells[ui]?.label;
+  const ambiguous = optionCells.some(
+    (c) => c !== cell && area.ui.cells[uiIndexOf(area, c)]?.label === label,
+  );
+  return ambiguous ? `col ${(ui % area.ui.columns) + 1}` : null;
+}
+
+/** The chosen bonus action's target area/cell plus its sibling options. */
+function bonusTarget(
+  state: GameState,
+  actions: Action[],
+  a: Action,
+): { area: string; cell: number; options: number[] } | null {
+  if (a.t !== 'bonus') return null;
+  const head = state.pending[0];
+  if (head?.t === 'crossAny' && a.cell !== undefined) {
+    const options = actions.flatMap((x) => (x.t === 'bonus' && x.cell !== undefined ? [x.cell] : []));
+    return { area: head.area, cell: a.cell, options };
+  }
+  if (a.placement) {
+    const area = a.placement.area;
+    const options = actions.flatMap((x) =>
+      x.t === 'bonus' && x.placement?.area === area ? [x.placement.cell] : [],
+    );
+    return { area, cell: a.placement.cell, options };
+  }
+  return null;
+}
+
+/** One resolved bonus step: a mini sheet cell, or a plain glyph (↻, 🦊…). */
+type Entry =
+  | { kind: 'cell'; area: string; label: string; col?: string }
+  | { kind: 'glyph'; text: string };
+
+/** The printed label of a grid cell ("11", "6"…), if the area is a grid. */
+function gridLabel(variant: VariantDef, areaId: string, cell: number): string | null {
+  const area = areaById(variant, areaId);
+  if (area.ui.kind !== 'grid') return null;
+  const ui = uiIndexOf(area, cell);
+  return ui >= 0 ? (area.ui.cells[ui]?.label ?? null) : null;
+}
+
+/** Immediate effects render directly; crossAny/free wait for their follow-up. */
+function entryForEffect(e: Effect): Entry | null {
+  switch (e.t) {
+    case 'crossNext':
+      return { kind: 'cell', area: e.area, label: 'X' };
+    case 'writeNext':
+      return { kind: 'cell', area: e.area, label: String(e.value) };
+    case 'reroll':
+      return { kind: 'glyph', text: '↻' };
+    case 'plus1':
+      return { kind: 'glyph', text: '+1' };
+    case 'return':
+      return { kind: 'glyph', text: '↩' };
+    case 'fox':
+      return { kind: 'glyph', text: '🦊' };
+    default:
+      return null; // crossAny/free/choice: the follow-up decision names the cell
+  }
+}
+
+/** The visual entry for a resolved bonus action, or null if it has none. */
+function entryForBonus(
+  state: GameState,
+  actions: Action[],
+  a: Action,
+  variant: VariantDef,
+): Entry | null {
+  if (a.t !== 'bonus') return null;
+  const head = state.pending[0];
+  if (head?.t === 'crossAny' && a.cell !== undefined) {
+    const target = bonusTarget(state, actions, a);
+    const col = target && columnHint(variant, target.area, target.cell, target.options);
+    return {
+      kind: 'cell',
+      area: head.area,
+      label: gridLabel(variant, head.area, a.cell) ?? 'X',
+      col: col ?? undefined,
+    };
+  }
+  if ((head?.t === 'free' || head?.t === 'silverMark') && a.placement) {
+    const area = areaById(variant, a.placement.area);
+    // Silver rows are color-coded — the row color says more than "silver".
+    const colorId = area.silverRows
+      ? area.silverRows[Math.floor(uiIndexOf(area, a.placement.cell) / area.ui.columns)]
+      : a.placement.area;
+    const label =
+      area.ui.kind === 'grid' && !area.silverRows
+        ? (gridLabel(variant, a.placement.area, a.placement.cell) ?? String(a.placement.value))
+        : String(a.placement.value);
+    const target = bonusTarget(state, actions, a);
+    const col = target && columnHint(variant, target.area, target.cell, target.options);
+    return { kind: 'cell', area: colorId, label, col: col ?? undefined };
+  }
+  if (head?.t === 'choice' && a.option !== undefined) {
+    return entryForEffect(head.options[a.option]);
+  }
+  return null;
+}
+
+/** A strategy's decision plus the resolved bonus cells it would chain. */
+interface Pick {
+  a: Action;
+  entries: Entry[];
+}
+
 /**
  * A strategy's chosen action, in dice-first shorthand:
  *   - the die chip alone when it lands in its own area,
@@ -35,14 +173,31 @@ function MiniArea({ area }: { area: string }) {
  *   - "white → ▪" when the wild is spent on a color section,
  * and describeAction's text for everything that isn't a die pick.
  */
+function MiniCell({ entry }: { entry: Entry & { kind: 'cell' } }) {
+  return (
+    <span
+      className={`mini-cell die-${entry.area} ${DARK_INK.has(entry.area) ? 'ink-dark' : 'ink-light'}`}
+      title={`${entry.area} ${entry.label}${entry.col ? ` (${entry.col})` : ''}`}
+    >
+      {entry.label}
+    </span>
+  );
+}
+
 function ChoiceLabel({
   state,
   variant,
   action,
+  actions,
+  entries,
 }: {
   state: GameState;
   variant: VariantDef;
   action: Action;
+  /** The full decision's action list — used to spot ambiguous targets. */
+  actions: Action[];
+  /** Resolved bonus steps the strategy would chain after this action. */
+  entries: Entry[];
 }) {
   const a = action;
   if (a.t === 'pick' || a.t === 'plus1' || a.t === 'passivePick') {
@@ -57,6 +212,15 @@ function ChoiceLabel({
       );
     }
     const p = a.placement;
+    const siblingCells = actions.flatMap((x) =>
+      (x.t === 'pick' || x.t === 'plus1' || x.t === 'passivePick') &&
+      x.die === a.die &&
+      x.placement?.area === p.area
+        ? [x.placement.cell]
+        : [],
+    );
+    const loc = columnHint(variant, p.area, p.cell, siblingCells);
+    const locHint = loc && <span className="hint">{loc}</span>;
     const blueDie = variant.colors.indexOf('blue');
     const wildDie = variant.wild ? variant.colors.indexOf(variant.wild) : -1;
     if (p.area === 'blue' && blueDie >= 0 && wildDie >= 0 && (a.die === blueDie || a.die === wildDie)) {
@@ -86,6 +250,27 @@ function ChoiceLabel({
             <MiniArea area={p.area} />
           </>
         )}
+        {locHint}
+      </span>
+    );
+  }
+  if (a.t === 'bonus' && entries.length > 0) {
+    return (
+      <span className="choice">
+        <span className="hint">bonus:</span>
+        {entries.map((e, i) => (
+          <span key={i} className="choice">
+            {i > 0 && <span className="hint">→</span>}
+            {e.kind === 'cell' ? (
+              <>
+                <MiniCell entry={e} />
+                {e.col && <span className="hint">{e.col}</span>}
+              </>
+            ) : (
+              <span>{e.text}</span>
+            )}
+          </span>
+        ))}
       </span>
     );
   }
@@ -245,7 +430,7 @@ export function StrategyPicks({
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
-  const [picks, setPicks] = useState<Record<string, Action | null>>({});
+  const [picks, setPicks] = useState<Record<string, Pick | null>>({});
   const picksRef = useRef(picks);
   const lastState = useRef<GameState | null>(null);
 
@@ -263,13 +448,37 @@ export function StrategyPicks({
       const name = shown.find((n) => !(n in picksRef.current));
       const strat = name !== undefined ? registry.get(name) : undefined;
       if (name === undefined || !strat) return;
-      let choice: Action | null = null;
+      let pick: Pick | null = null;
       try {
-        choice = strat.choose(state, actions, { variant, rng: mulberry32(0xfeed) });
+        const ctx = { variant, rng: mulberry32(0xfeed) };
+        const choice = strat.choose(state, actions, ctx);
+        // A bonus choice (e.g. a round bonus "X in blue") only enqueues the
+        // effect — the concrete cell is a follow-up decision. Resolve those
+        // forward with the same strategy so the row can show which cell.
+        const entries: Entry[] = [];
+        if (choice.t === 'bonus') {
+          const first = entryForBonus(state, actions, choice, variant);
+          if (first) entries.push(first);
+          try {
+            let s2 = applyAction(state, variant, choice);
+            let guard = 0;
+            while (s2.pending.length > 0 && guard++ < 6) {
+              const n2 = getPending(s2, variant);
+              if (n2.kind !== 'decision') break;
+              const a2 = strat.choose(s2, n2.actions, ctx);
+              const e = entryForBonus(s2, n2.actions, a2, variant);
+              if (e) entries.push(e);
+              s2 = applyAction(s2, variant, a2);
+            }
+          } catch {
+            // lookahead is best-effort; show what resolved so far
+          }
+        }
+        pick = { a: choice, entries };
       } catch {
         // a strategy that chokes on a node just shows "—"
       }
-      picksRef.current = { ...picksRef.current, [name]: choice };
+      picksRef.current = { ...picksRef.current, [name]: pick };
       setPicks(picksRef.current);
       window.setTimeout(step, 0);
     };
@@ -310,7 +519,13 @@ export function StrategyPicks({
                 {!(name in picks) ? (
                   <span className="hint">…</span>
                 ) : picks[name] ? (
-                  <ChoiceLabel state={state} variant={variant} action={picks[name]} />
+                  <ChoiceLabel
+                    state={state}
+                    variant={variant}
+                    action={picks[name].a}
+                    actions={actions}
+                    entries={picks[name].entries}
+                  />
                 ) : (
                   <span className="hint">—</span>
                 )}
