@@ -207,7 +207,7 @@ function GridArea({
   return (
     <div
       className="grid-area"
-      style={{ gridTemplateColumns: `repeat(${cols}, 40px) 28px` }}
+      style={{ gridTemplateColumns: `repeat(${cols}, var(--cell)) 28px` }}
     >
       {items}
     </div>
@@ -219,15 +219,17 @@ function TrackArea({
   cells,
   active,
   onCellClick,
+  reached = 0,
 }: {
   area: AreaDef;
   cells: number[];
   active: Set<string>;
   onCellClick: CellClick;
+  reached?: number;
 }) {
   const ui = area.ui;
   return (
-    <div className="track-area">
+    <div className={`track-area${ui.pointsScale ? ' with-scale' : ''}`}>
       {ui.cells.map((c, i) => {
         const key = `${area.id}:${i}`;
         const filled = cells[i] !== 0;
@@ -251,6 +253,11 @@ function TrackArea({
             {c.desc && <span className="asc">≥</span>}
             {pairSecond && <span className="asc">−</span>}
             <span className="track-slot">
+              {ui.pointsScale && (
+                <span className={`scale-pt${i === reached - 1 ? ' reached' : ''}`}>
+                  {ui.pointsScale[i]}
+                </span>
+              )}
               <button
                 className={cls}
                 disabled={!isActive}
@@ -327,6 +334,56 @@ function roundIcon(e: Effect): string {
   }
 }
 
+/** Round track + action bars — rendered inside the dice tray to save a row. */
+export function GameTracks({ state, variant }: { state: GameState; variant: VariantDef }) {
+  return (
+    <>
+      <div className="round-track" aria-label={`round ${state.round} of ${variant.rounds}`}>
+        {variant.roundBonuses.map((b, i) => {
+          const r = i + 1;
+          const cls = ['round-chip', r === state.round && 'current', r < state.round && 'past']
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <span key={r} className={cls}>
+              <span className="n">{r}</span>
+              <span className="b">{b ? roundIcon(b) : '·'}</span>
+            </span>
+          );
+        })}
+      </div>
+      <div className="action-tracks">
+        <ActionTrack
+          label="re-roll"
+          icon="↻"
+          bar={variant.bars.reroll}
+          spent={state.stats.rerollsUsed}
+          available={state.rerolls}
+          unlocked={state.barUnlocks.reroll}
+        />
+        <ActionTrack
+          label="extra die"
+          icon="+1"
+          bar={variant.bars.plus1}
+          spent={state.stats.plus1Spent}
+          available={state.plus1}
+          unlocked={state.barUnlocks.plus1}
+        />
+        {variant.bars.return.size > 0 && (
+          <ActionTrack
+            label="return"
+            icon="↩"
+            bar={variant.bars.return}
+            spent={state.stats.returnsUsed}
+            available={state.returns}
+            unlocked={state.barUnlocks.return}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
 export function Sheet({
   state,
   variant,
@@ -342,51 +399,6 @@ export function Sheet({
 }) {
   return (
     <div className="sheet">
-      <div className="sheet-top">
-        <div className="round-track" aria-label={`round ${state.round} of ${variant.rounds}`}>
-          {variant.roundBonuses.map((b, i) => {
-            const r = i + 1;
-            const cls = ['round-chip', r === state.round && 'current', r < state.round && 'past']
-              .filter(Boolean)
-              .join(' ');
-            return (
-              <span key={r} className={cls}>
-                <span className="n">{r}</span>
-                <span className="b">{b ? roundIcon(b) : '·'}</span>
-              </span>
-            );
-          })}
-        </div>
-        <div className="action-tracks">
-          <ActionTrack
-            label="re-roll"
-            icon="↻"
-            bar={variant.bars.reroll}
-            spent={state.stats.rerollsUsed}
-            available={state.rerolls}
-            unlocked={state.barUnlocks.reroll}
-          />
-          <ActionTrack
-            label="extra die"
-            icon="+1"
-            bar={variant.bars.plus1}
-            spent={state.stats.plus1Spent}
-            available={state.plus1}
-            unlocked={state.barUnlocks.plus1}
-          />
-          {variant.bars.return.size > 0 && (
-            <ActionTrack
-              label="return"
-              icon="↩"
-              bar={variant.bars.return}
-              spent={state.stats.returnsUsed}
-              available={state.returns}
-              unlocked={state.barUnlocks.return}
-            />
-          )}
-        </div>
-      </div>
-
       <div className="areas">
         {variant.areas.map((area) => {
           const cells = state.areas[area.id];
@@ -400,16 +412,27 @@ export function Sheet({
               ? cells.filter((c) => c === 2).length
               : crossedCount(cells) - pre;
           return (
-            <section key={area.id} className={`area area-${area.id} kind-${area.ui.kind}`}>
-              <div className="area-head">
-                <span className="area-name">{area.label}</span>
-                <span className="area-score">{scores[area.id]} pts</span>
-              </div>
-              {area.ui.pointsScale && <PointsScale scale={area.ui.pointsScale} reached={reached} />}
+            <section
+              key={area.id}
+              className={`area area-${area.id} kind-${area.ui.kind}`}
+              aria-label={area.label}
+            >
+              <span className="area-score">{scores[area.id]} pts</span>
+              {area.ui.pointsScale && area.ui.kind === 'grid' && (
+                <PointsScale scale={area.ui.pointsScale} reached={reached} />
+              )}
               {area.ui.kind === 'grid' ? (
                 <GridArea area={area} cells={cells} active={active} onCellClick={onCellClick} />
               ) : (
-                <TrackArea area={area} cells={cells} active={active} onCellClick={onCellClick} />
+                // Track scales render inside the slots so each step's points sit
+                // exactly above its cell, separators notwithstanding.
+                <TrackArea
+                  area={area}
+                  cells={cells}
+                  active={active}
+                  onCellClick={onCellClick}
+                  reached={reached}
+                />
               )}
             </section>
           );

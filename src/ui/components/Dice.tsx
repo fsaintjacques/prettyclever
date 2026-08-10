@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { GameState, VariantDef } from '../../engine';
 
 const PIP_LAYOUT: Record<number, [number, number][]> = {
@@ -84,12 +85,17 @@ export function DiceTray({
   selectable,
   selected,
   onDieClick,
+  top,
+  children,
 }: {
   state: GameState;
   variant: VariantDef;
   selectable: Set<number>;
   selected: number | null;
   onDieClick: (die: number) => void;
+  /** Rendered as a full-width row above the dice zones. */
+  top?: ReactNode;
+  children?: ReactNode;
 }) {
   const zones: { id: 'pool' | 'field' | 'platter'; label: string }[] = [
     { id: 'pool', label: 'Rolled' },
@@ -98,10 +104,12 @@ export function DiceTray({
   ];
   const blue = variant.colors.indexOf('blue');
   const white = variant.colors.indexOf('white');
-  const sum = blue >= 0 && white >= 0 ? state.faces[blue] + state.faces[white] : null;
+  const sum = blue >= 0 && white >= 0 ? state.faces[blue] + state.faces[white] : 0;
   return (
     <div className="tray">
-      {zones.map((z) => {
+      {top && <div className="tray-top">{top}</div>}
+      <div className="tray-row">
+        {zones.map((z) => {
         const dice = variant.colors.map((_, i) => i).filter((i) => state.loc[i] === z.id);
         if (z.id !== 'pool' && dice.length === 0) return null;
         return (
@@ -121,11 +129,17 @@ export function DiceTray({
                 />
               ))}
               {dice.length === 0 && <span className="hint">—</span>}
+              {z.id === 'pool' && sum > 0 && (
+                <span className="sum-mini" title={`blue + white = ${sum}`}>
+                  <span className="sw die-blue" />+<span className="sw die-white" />={sum}
+                </span>
+              )}
             </div>
-          </div>
-        );
-      })}
-      {sum !== null && sum > 0 && <span className="sum-chip">blue + white = {sum}</span>}
+            </div>
+          );
+        })}
+        {children}
+      </div>
     </div>
   );
 }
