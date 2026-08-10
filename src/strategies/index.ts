@@ -1,6 +1,7 @@
 import { makeBonusman } from './bonusman';
 import { makeExpectimax } from './expectimax';
 import { makeTdNetBonus } from './tdnet-bonus';
+import { makeTdNetTwiceBonus } from './tdnet-twice-bonus';
 import { makeGreedy } from './greedy';
 import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
@@ -97,6 +98,10 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // which escaped the yellow-max local optimum into the fox-economy regime:
     // 296.5 ± 35.9 (seed 11) / 296.2 ± 35.3 (seed 777), 500 games each.
     'td-net': (opts) => makeTdNetTwice(opts as never),
+    // Twice net + the bonus-economy chase block, trained with the transplant
+    // + micro-polish recipe (--features twicebonus): 301.3 mean over 5
+    // held-out seeds × 500 games — the first 300+ Twice net in this repo.
+    'td-net-bonus': (opts) => makeTdNetTwiceBonus(opts as never),
   },
 };
 

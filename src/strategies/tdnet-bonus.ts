@@ -114,6 +114,167 @@ export function extractFeaturesBonus(s: GameState, v: VariantDef, x: Float64Arra
 }
 
 // ---------------------------------------------------------------------------
+// v1bonus3: landing-value features (from the bonus-graph analysis)
+// ---------------------------------------------------------------------------
+
+/**
+ * Instrumentation showed the bonus net wins on cascade *selection and timing*,
+ * not volume (identical ~9.7 bonus marks/game vs the control) — so this block
+ * encodes where bonuses LAND rather than how many exist:
+ *  - 1: orange write-landing potential — every unfired write→orange bonus
+ *    valued at (value/6) × (next open slot's multiplier/3) × its proximity².
+ *  - 1: purple write-landing potential (same, multiplier-free).
+ *  - 1: multiplier of orange's slot AFTER next (/3) — filling one orange slot
+ *    with a die shifts where a granted 6 lands; the net can time the ×3.
+ *  - 5: per-area depth-2 "cascade fuse" — a one-away group in A while a
+ *    one-away bonus elsewhere grants a mark into A.
+ *  - 1: fox fuse — a one-away fox × current minimum area (/40): a fox is
+ *    worth the final min area, so its chase value is state-dependent.
+ */
+export const TD_BONUS3_FEATURES = TD_BONUS_FEATURES + 9;
+
+interface BonusSite {
+  area: string;
+  /** Group cell indices, or null for a track slot site. */
+  cells: number[] | null;
+  /** Track slot index when cells is null. */
+  slot: number;
+  markTargets: string[];
+  write: { area: string; value: number } | null;
+  isFox: boolean;
+}
+
+const siteCache = new WeakMap<VariantDef, BonusSite[]>();
+
+function markTargetsOf(e: Effect): string[] {
+  switch (e.t) {
+    case 'crossAny':
+    case 'crossNext':
+    case 'free':
+      return [e.area];
+    case 'choice':
+      return e.options.flatMap(markTargetsOf);
+    default:
+      return [];
+  }
+}
+
+function sitesOf(v: VariantDef): BonusSite[] {
+  let sites = siteCache.get(v);
+  if (sites) return sites;
+  sites = [];
+  for (const area of v.areas) {
+    const ui = area.ui;
+    if (ui.groups) {
+      for (const g of ui.groups) {
+        if (!g.bonus) continue;
+        sites.push({
+          area: area.id,
+          cells: g.cells,
+          slot: -1,
+          markTargets: markTargetsOf(g.bonus),
+          write: g.bonus.t === 'writeNext' ? { area: g.bonus.area, value: g.bonus.value } : null,
+          isFox: g.bonus.t === 'fox',
+        });
+      }
+    }
+    ui.cells.forEach((c, i) => {
+      if (!c.bonus) return;
+      sites!.push({
+        area: area.id,
+        cells: null,
+        slot: i,
+        markTargets: markTargetsOf(c.bonus),
+        write: c.bonus.t === 'writeNext' ? { area: c.bonus.area, value: c.bonus.value } : null,
+        isFox: c.bonus.t === 'fox',
+      });
+    });
+  }
+  siteCache.set(v, sites);
+  return sites;
+}
+
+/** Proximity of an unfired site in [0, 1]; 0 when fired (banked already). */
+function siteProximity(s: GameState, site: BonusSite): number {
+  const cells = s.areas[site.area];
+  if (site.cells) {
+    let done = 0;
+    for (const c of site.cells) if (cells[c] !== 0) done++;
+    if (done === site.cells.length) return 0;
+    const frac = done / site.cells.length;
+    return frac * frac;
+  }
+  if (cells[site.slot] !== 0) return 0;
+  let next = 0;
+  while (next < cells.length && cells[next] !== 0) next++;
+  return 1 / (1 + (site.slot - next));
+}
+
+export function extractFeaturesBonus3(s: GameState, v: VariantDef, x: Float64Array): void {
+  extractFeaturesBonus(s, v, x); // zero-fills, writes [0, TD_BONUS_FEATURES)
+  const k = TD_BONUS_FEATURES;
+  const sites = sitesOf(v);
+  const br = scoreState(s, v);
+
+  const orange = v.areas.find((a) => a.id === 'orange');
+  const multAt = (offset: number): number => {
+    if (!orange) return 0;
+    const cells = s.areas.orange;
+    let next = 0;
+    while (next < cells.length && cells[next] !== 0) next++;
+    const i = next + offset;
+    if (i >= cells.length) return 0;
+    const lbl = orange.ui.cells[i].label;
+    return lbl ? Number(lbl.replace('×', '')) || 1 : 1;
+  };
+
+  // Per-area one-away counts (groups) + near track sites, for the fuses.
+  const oneAwayIn: Record<string, number> = {};
+  const oneAwayGiversInto: Record<string, number> = {};
+  let foxOneAway = 0;
+  for (const site of sites) {
+    const cells = s.areas[site.area];
+    let oneAway = false;
+    if (site.cells) {
+      let done = 0;
+      for (const c of site.cells) if (cells[c] !== 0) done++;
+      oneAway = done === site.cells.length - 1;
+      if (oneAway) oneAwayIn[site.area] = (oneAwayIn[site.area] ?? 0) + 1;
+    } else if (cells[site.slot] === 0) {
+      let next = 0;
+      while (next < cells.length && cells[next] !== 0) next++;
+      oneAway = site.slot === next;
+    }
+    if (!oneAway) continue;
+    if (site.isFox) foxOneAway++;
+    for (const t of site.markTargets) {
+      oneAwayGiversInto[t] = (oneAwayGiversInto[t] ?? 0) + 1;
+    }
+  }
+
+  // Write-landing potentials.
+  let orangePot = 0;
+  let purplePot = 0;
+  for (const site of sites) {
+    if (!site.write) continue;
+    const prox = siteProximity(s, site);
+    if (prox === 0) continue;
+    if (site.write.area === 'orange') orangePot += (site.write.value / 6) * (multAt(0) / 3) * prox;
+    else if (site.write.area === 'purple') purplePot += (site.write.value / 6) * prox;
+  }
+  x[k] = Math.min(1, orangePot);
+  x[k + 1] = Math.min(1, purplePot);
+  x[k + 2] = multAt(1) / 3;
+
+  const AREAS = ['yellow', 'blue', 'green', 'orange', 'purple'];
+  for (let i = 0; i < 5; i++) {
+    const a = AREAS[i];
+    x[k + 3 + i] = Math.min(1, (oneAwayIn[a] ?? 0) * 0.5) * Math.min(1, (oneAwayGiversInto[a] ?? 0) * 0.5);
+  }
+  x[k + 8] = Math.min(1, foxOneAway) * (br.minArea / 40);
+}
+
+// ---------------------------------------------------------------------------
 // v1bonus2: reachability-gated track bonuses + time-bucketed chase signals
 // ---------------------------------------------------------------------------
 
@@ -206,6 +367,54 @@ export function chooseByValueBonus(
   for (const a of actions) {
     const ns = resolvePendingByValueBonus(ctx, applyAction(s, v, a), v);
     const val = stateValueBonus(ctx, ns, v);
+    if (val > bestVal) {
+      bestVal = val;
+      best = a;
+    }
+  }
+  return best;
+}
+
+/** V/resolve/choose over the bonus3 encoding. */
+export function stateValueBonus3(ctx: EvalCtx, s: GameState, v: VariantDef): number {
+  if (s.phase === 'over') return scoreState(s, v).total / 300;
+  extractFeaturesBonus3(s, v, ctx.x);
+  return forward(ctx.net, ctx.x, ctx.h1, ctx.h2);
+}
+
+export function resolvePendingByValueBonus3(ctx: EvalCtx, s: GameState, v: VariantDef): GameState {
+  let cur = s;
+  let guard = 0;
+  while (cur.pending.length > 0 && guard++ < 64) {
+    const node = getPending(cur, v);
+    if (node.kind !== 'decision') break;
+    let best: GameState | null = null;
+    let bestVal = -Infinity;
+    for (const a of node.actions) {
+      const ns = applyAction(cur, v, a);
+      const val = stateValueBonus3(ctx, ns, v);
+      if (val > bestVal) {
+        bestVal = val;
+        best = ns;
+      }
+    }
+    if (!best) break;
+    cur = best;
+  }
+  return cur;
+}
+
+export function chooseByValueBonus3(
+  ctx: EvalCtx,
+  s: GameState,
+  v: VariantDef,
+  actions: Action[],
+): Action {
+  let best = actions[0];
+  let bestVal = -Infinity;
+  for (const a of actions) {
+    const ns = resolvePendingByValueBonus3(ctx, applyAction(s, v, a), v);
+    const val = stateValueBonus3(ctx, ns, v);
     if (val > bestVal) {
       bestVal = val;
       best = a;

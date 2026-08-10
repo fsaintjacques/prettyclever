@@ -68,11 +68,19 @@ import { chooseByValue2, extractFeaturesV2, makeTdNetV2, TD2_FEATURES } from '..
 import {
   chooseByValueBonus,
   chooseByValueBonus2,
+  chooseByValueBonus3,
   extractFeaturesBonus,
   extractFeaturesBonus2,
+  extractFeaturesBonus3,
   TD_BONUS_FEATURES,
   TD_BONUS2_FEATURES,
+  TD_BONUS3_FEATURES,
 } from '../src/strategies/tdnet-bonus';
+import {
+  chooseByValueTwiceBonus,
+  extractFeaturesTwiceBonus,
+  TDTB_FEATURES,
+} from '../src/strategies/tdnet-twice-bonus';
 import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
 import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
 import type { Strategy } from '../src/strategies/types';
@@ -136,6 +144,29 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
     choose: chooseByValueBonus,
     warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
   },
+  // Twice net + the bonus-economy chase block (one-away per kind, track
+  // pull, completed-group count); transplant from the committed Twice net.
+  twicebonus: {
+    variantId: 'twice-as-clever',
+    n: TDTB_FEATURES,
+    scale: TDT_SCALE,
+    constName: 'TDNET_TWICE_BONUS_WEIGHTS',
+    extract: extractFeaturesTwiceBonus,
+    choose: chooseByValueTwiceBonus,
+    warmTeacher: () => makeTdNetTwice(),
+  },
+  // v1bonus + landing-value features from the bonus-graph analysis:
+  // write-landing potentials, orange multiplier timing, depth-2 cascade
+  // fuses, fox-value fuse.
+  v1bonus3: {
+    variantId: 'thats-pretty-clever',
+    n: TD_BONUS3_FEATURES,
+    scale: 300,
+    constName: 'TDNET_BONUS3_WEIGHTS',
+    extract: extractFeaturesBonus3,
+    choose: chooseByValueBonus3,
+    warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
+  },
   // v1bonus + reachability-gated track bonuses and time-bucketed chase
   // signals (late green/orange/purple bonuses go dark when unreachable).
   v1bonus2: {
@@ -154,14 +185,16 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
 // ---------------------------------------------------------------------------
 
 interface Sparse {
-  idx: Uint8Array;
+  // Uint16: feature sets above 255 inputs (e.g. twicebonus at 271) would
+  // silently wrap Uint8 indices and corrupt every training sample.
+  idx: Uint16Array;
   val: Float32Array;
 }
 
 function toSparse(x: Float64Array): Sparse {
   let n = 0;
   for (let i = 0; i < x.length; i++) if (x[i] !== 0) n++;
-  const idx = new Uint8Array(n);
+  const idx = new Uint16Array(n);
   const val = new Float32Array(n);
   let j = 0;
   for (let i = 0; i < x.length; i++) {
