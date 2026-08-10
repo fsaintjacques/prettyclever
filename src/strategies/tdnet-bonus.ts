@@ -114,6 +114,53 @@ export function extractFeaturesBonus(s: GameState, v: VariantDef, x: Float64Arra
 }
 
 // ---------------------------------------------------------------------------
+// v1bonus2: reachability-gated track bonuses + time-bucketed chase signals
+// ---------------------------------------------------------------------------
+
+/**
+ * The refinement hypotheses: (1) late track bonuses (green/orange/purple) are
+ * only worth chasing when they are *reachable* in the rounds that remain, and
+ * (2) the order of bonus acquisition matters — the same one-away signal means
+ * different things in round 1 and round 6. This block appends:
+ *  - 3: per-track reachability of the next bonus-carrying slot —
+ *    1 - clamp(distance / roundsLeft) — so far-off bonuses go dark late.
+ *  - 24: the 8 one-away kind channels copied into an early/mid/late bucket.
+ *  - 6: banked reroll/+1 unlock fractions in the same three buckets.
+ */
+export const TD_BONUS2_FEATURES = TD_BONUS_FEATURES + 33;
+
+export function extractFeaturesBonus2(s: GameState, v: VariantDef, x: Float64Array): void {
+  extractFeaturesBonus(s, v, x); // zero-fills, writes [0, TD_BONUS_FEATURES)
+  const k = TD_BONUS_FEATURES;
+  const roundsLeft = Math.max(1, v.rounds - s.round + 1);
+  const bucket = s.round <= 2 ? 0 : s.round <= 4 ? 1 : 2;
+
+  // Per-track reachability of the next bonus slot (up to 3 tracks).
+  let ti = 0;
+  for (const area of v.areas) {
+    if (area.ui.kind !== 'track' || ti >= 3) continue;
+    const cells = s.areas[area.id];
+    const next = cells.findIndex((c) => c === 0);
+    if (next >= 0) {
+      for (let i = next; i < area.ui.cells.length; i++) {
+        if (!area.ui.cells[i].bonus) continue;
+        x[k + ti] = Math.max(0, 1 - (i - next) / roundsLeft);
+        break;
+      }
+    }
+    ti++;
+  }
+
+  // One-away channels by game phase: same signal, different meaning per era.
+  const oneAway = TD_FEATURES + 3;
+  for (let c = 0; c < 8; c++) x[k + 3 + bucket * 8 + c] = x[oneAway + c];
+
+  // Banked unlocks by game phase (early unlocks compound, late ones do not).
+  x[k + 27 + bucket] = x[TD_FEATURES];
+  x[k + 30 + bucket] = x[TD_FEATURES + 1];
+}
+
+// ---------------------------------------------------------------------------
 // Value-based policy (v1's argmax machinery over the bonus encoding)
 // ---------------------------------------------------------------------------
 
@@ -159,6 +206,54 @@ export function chooseByValueBonus(
   for (const a of actions) {
     const ns = resolvePendingByValueBonus(ctx, applyAction(s, v, a), v);
     const val = stateValueBonus(ctx, ns, v);
+    if (val > bestVal) {
+      bestVal = val;
+      best = a;
+    }
+  }
+  return best;
+}
+
+/** V/resolve/choose over the bonus2 encoding (mirrors the trio above). */
+export function stateValueBonus2(ctx: EvalCtx, s: GameState, v: VariantDef): number {
+  if (s.phase === 'over') return scoreState(s, v).total / 300;
+  extractFeaturesBonus2(s, v, ctx.x);
+  return forward(ctx.net, ctx.x, ctx.h1, ctx.h2);
+}
+
+export function resolvePendingByValueBonus2(ctx: EvalCtx, s: GameState, v: VariantDef): GameState {
+  let cur = s;
+  let guard = 0;
+  while (cur.pending.length > 0 && guard++ < 64) {
+    const node = getPending(cur, v);
+    if (node.kind !== 'decision') break;
+    let best: GameState | null = null;
+    let bestVal = -Infinity;
+    for (const a of node.actions) {
+      const ns = applyAction(cur, v, a);
+      const val = stateValueBonus2(ctx, ns, v);
+      if (val > bestVal) {
+        bestVal = val;
+        best = ns;
+      }
+    }
+    if (!best) break;
+    cur = best;
+  }
+  return cur;
+}
+
+export function chooseByValueBonus2(
+  ctx: EvalCtx,
+  s: GameState,
+  v: VariantDef,
+  actions: Action[],
+): Action {
+  let best = actions[0];
+  let bestVal = -Infinity;
+  for (const a of actions) {
+    const ns = resolvePendingByValueBonus2(ctx, applyAction(s, v, a), v);
+    const val = stateValueBonus2(ctx, ns, v);
     if (val > bestVal) {
       bestVal = val;
       best = a;

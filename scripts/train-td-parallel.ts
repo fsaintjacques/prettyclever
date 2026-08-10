@@ -67,8 +67,11 @@ import {
 import { chooseByValue2, extractFeaturesV2, makeTdNetV2, TD2_FEATURES } from '../src/strategies/tdnetv2';
 import {
   chooseByValueBonus,
+  chooseByValueBonus2,
   extractFeaturesBonus,
+  extractFeaturesBonus2,
   TD_BONUS_FEATURES,
+  TD_BONUS2_FEATURES,
 } from '../src/strategies/tdnet-bonus';
 import { TDNET_WEIGHTS } from '../src/strategies/tdnet-weights';
 import { TDNETV2_WEIGHTS } from '../src/strategies/tdnetv2-weights';
@@ -131,6 +134,17 @@ const FEATURE_SETS: Record<string, FeatureSet> = {
     constName: 'TDNET_BONUS_WEIGHTS',
     extract: extractFeaturesBonus,
     choose: chooseByValueBonus,
+    warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
+  },
+  // v1bonus + reachability-gated track bonuses and time-bucketed chase
+  // signals (late green/orange/purple bonuses go dark when unreachable).
+  v1bonus2: {
+    variantId: 'thats-pretty-clever',
+    n: TD_BONUS2_FEATURES,
+    scale: 300,
+    constName: 'TDNET_BONUS2_WEIGHTS',
+    extract: extractFeaturesBonus2,
+    choose: chooseByValueBonus2,
     warmTeacher: () => makeTdNet({ params: TDNET_WEIGHTS }),
   },
 };

@@ -22,6 +22,7 @@ export * from './expectimax';
 export * from './mcts';
 export * from './planner';
 export * from './tdnet';
+export * from './tdnet-bonus';
 export * from './tdnet-twice';
 export * from './tdnetv2';
 
@@ -79,7 +80,11 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     'td-net-v2': (opts) => makeTdNetV2(opts as never),
     // v1 features + explicit bonus-economy block ("reward chasing"): banked
     // unlocks, one-away bonus groups per kind, track pull toward bonus slots
-    // (scripts/train-td-parallel.ts --features v1bonus).
+    // (scripts/train-td-parallel.ts --features v1bonus). Trained by
+    // transplanting v1's weights (new feature rows zero-initialized) and
+    // refining at low ε: 260.2 mean over 7 held-out seeds × 500 games vs
+    // 250.3 for td-net — and vs 256.4 for v1 continued at the same budget,
+    // so ~+4 is attributable to the features themselves.
     'td-net-bonus': (opts) => makeTdNetBonus(opts as never),
     // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
     // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
