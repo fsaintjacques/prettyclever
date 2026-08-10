@@ -1384,3 +1384,25 @@ footer.credits a {
   padding-top: 6px;
   border-top: 1px solid var(--line);
 }
+
+.mini-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.25);
+  flex: none;
+}
+
+.mini-cell.ink-light {
+  color: #fff;
+}
+
+.mini-cell.ink-dark {
+  color: var(--paper-ink);
+}
