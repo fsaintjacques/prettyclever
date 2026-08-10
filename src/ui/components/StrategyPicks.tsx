@@ -105,6 +105,8 @@ function ChoiceLabel({
 interface Prefs {
   order: string[];
   disabled: string[];
+  /** Blur the picks until the card is hovered — play without spoilers. */
+  revealOnHover: boolean;
 }
 
 const prefsKey = (variantId: string) => `cleverlab.strategy-picks.v1:${variantId}`;
@@ -126,7 +128,7 @@ function loadPrefs(variantId: string, names: string[]): Prefs {
   const disabled = (Array.isArray(stored.disabled) ? stored.disabled : []).filter((n) =>
     known.has(n),
   );
-  return { order, disabled };
+  return { order, disabled, revealOnHover: stored.revealOnHover === true };
 }
 
 function savePrefs(variantId: string, prefs: Prefs): void {
@@ -187,6 +189,16 @@ function StrategyPicker({
           </label>
         </div>
       ))}
+      <div className="picker-row picker-option">
+        <label>
+          <input
+            type="checkbox"
+            checked={prefs.revealOnHover}
+            onChange={() => onChange({ ...prefs, revealOnHover: !prefs.revealOnHover })}
+          />
+          Show picks on hover only
+        </label>
+      </div>
     </div>
   );
 }
@@ -275,7 +287,7 @@ export function StrategyPicks({
   }, [state, actions, shown, registry, variant]);
 
   return (
-    <div className="panel strategy-picks">
+    <div className={`panel strategy-picks${prefs.revealOnHover ? ' conceal' : ''}`}>
       <div className="panel-head">
         <h3>Strategy picks</h3>
         <div ref={popRef} className="picker-anchor">
@@ -296,19 +308,22 @@ export function StrategyPicks({
       ) : shown.length === 0 ? (
         <span className="hint">All strategies hidden — pick some via ⚙.</span>
       ) : (
-        <div className="picks">
-          {shown.map((name) => (
-            <div key={name} className="pick-row">
-              <span className="strat-name">{name}</span>
-              {!(name in picks) ? (
-                <span className="hint">…</span>
-              ) : picks[name] ? (
-                <ChoiceLabel state={state} variant={variant} action={picks[name]} />
-              ) : (
-                <span className="hint">—</span>
-              )}
-            </div>
-          ))}
+        <div className="picks-box">
+          <div className="picks">
+            {shown.map((name) => (
+              <div key={name} className="pick-row">
+                <span className="strat-name">{name}</span>
+                {!(name in picks) ? (
+                  <span className="hint">…</span>
+                ) : picks[name] ? (
+                  <ChoiceLabel state={state} variant={variant} action={picks[name]} />
+                ) : (
+                  <span className="hint">—</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {prefs.revealOnHover && <span className="reveal-hint">hover to reveal</span>}
         </div>
       )}
     </div>
