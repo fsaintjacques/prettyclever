@@ -16,6 +16,7 @@ import { DiceTray } from './components/Dice';
 import { ScorePanel } from './components/ScorePanel';
 import { Sheet } from './components/Sheet';
 import { SimPanel } from './components/SimPanel';
+import { StrategyPicks } from './components/StrategyPicks';
 
 type Mode = 'play' | 'watch' | 'sim';
 
@@ -354,6 +355,7 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
 
       <div className="rail">
         <ScorePanel variant={variant} score={score} final={node.kind === 'over'} />
+        <StrategyPicks state={state} variant={variant} actions={actions} />
         <div className="panel">
           <h3>Turn log</h3>
           <div className="log">
