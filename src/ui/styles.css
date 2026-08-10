@@ -1272,3 +1272,39 @@ footer.credits a {
   color: var(--ink-3);
   user-select: none;
 }
+
+/* "Show picks on hover only": blur the list until the card is hovered */
+
+.picks-box {
+  position: relative;
+}
+
+.strategy-picks.conceal .pick-row > :not(.strat-name) {
+  visibility: hidden;
+}
+
+.strategy-picks.conceal:hover .pick-row > :not(.strat-name) {
+  visibility: visible;
+}
+
+.reveal-hint {
+  position: absolute;
+  inset: 0 0 0 128px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+
+.strategy-picks.conceal:hover .reveal-hint {
+  display: none;
+}
+
+.picker-option {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
