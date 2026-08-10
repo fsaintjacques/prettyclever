@@ -1138,3 +1138,137 @@ footer.credits {
 footer.credits a {
   color: var(--ink-2);
 }
+
+/* ------------------------------------------------- strategy picks panel */
+
+.strategy-picks .picks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  min-height: 22px;
+}
+
+.pick-row .strat-name {
+  flex: none;
+  width: 118px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-die {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.25);
+  flex: none;
+}
+
+.mini-die.ink-light {
+  color: #fff;
+}
+
+.mini-die.ink-dark {
+  color: var(--paper-ink);
+}
+
+.mini-area {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.25);
+  flex: none;
+}
+
+.strategy-picks {
+  position: relative;
+}
+
+.strategy-picks .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gear-btn {
+  background: var(--sheet-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-m);
+  color: var(--ink-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 10px;
+  margin-top: -10px;
+}
+
+.gear-btn:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.picker-anchor {
+  position: relative;
+}
+
+.picker-pop {
+  position: absolute;
+  top: 20px;
+  right: 0;
+  z-index: 20;
+  background: var(--felt);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.picker-row:hover {
+  background: rgb(255 255 255 / 0.05);
+}
+
+.picker-row label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--ink-3);
+  user-select: none;
+}
