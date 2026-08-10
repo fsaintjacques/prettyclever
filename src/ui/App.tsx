@@ -14,7 +14,7 @@ import { describeEffect } from './describe';
 import { useGame } from './useGame';
 import { DiceTray } from './components/Dice';
 import { ScorePanel } from './components/ScorePanel';
-import { Sheet } from './components/Sheet';
+import { GameTracks, Sheet } from './components/Sheet';
 import { SimPanel } from './components/SimPanel';
 import { StrategyPicks } from './components/StrategyPicks';
 
@@ -38,29 +38,51 @@ function phaseLabel(s: GameState, v: VariantDef): string {
   }
 }
 
-/** Seed input + New game: empty seed = random, a number = reproducible game. */
+/**
+ * "New game" opens a small popover with the seed input: empty seed = random,
+ * a number = reproducible game.
+ */
 function NewGame({ reset }: { reset: (seed?: number) => void }) {
+  const [open, setOpen] = useState(false);
   const [seed, setSeed] = useState('');
+  const popRef = useRef<HTMLDivElement>(null);
   const start = () => {
     const n = Number(seed.trim());
     reset(seed.trim() !== '' && Number.isFinite(n) ? n >>> 0 : undefined);
+    setOpen(false);
   };
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
   return (
-    <>
-      <input
-        type="text"
-        inputMode="numeric"
-        placeholder="seed (random)"
-        value={seed}
-        onChange={(e) => setSeed(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && start()}
-        style={{ width: 110 }}
-        aria-label="seed for the next game"
-      />
-      <button className="btn subtle" onClick={start}>
+    <div ref={popRef} className="newgame-anchor">
+      <button className="btn subtle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         New game
       </button>
-    </>
+      {open && (
+        <div className="newgame-pop" role="dialog" aria-label="start a new game">
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="seed (random)"
+            value={seed}
+            onChange={(e) => setSeed(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && start()}
+            style={{ width: 110 }}
+            aria-label="seed for the next game"
+            autoFocus
+          />
+          <button className="btn primary" onClick={start}>
+            Start
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -204,6 +226,13 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
   return (
     <div className="main">
       <div>
+        <div className="status-row">
+          <div className="hint status-line">
+            <strong>Round {state.round}/{variant.rounds}</strong> · {phaseLabel(state, variant)}
+            {hint && <> — {hint}</>}
+          </div>
+          <NewGame reset={session.reset} />
+        </div>
         <DiceTray
           state={state}
           variant={variant}
@@ -214,7 +243,96 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
             if (ret) session.act(ret);
             else setSelectedDie((d) => (d === i ? null : i));
           }}
-        />
+          top={<GameTracks state={state} variant={variant} />}
+        >
+          <div className="tray-actions">
+            {mode === 'play' && (
+              <>
+                {rerollAction && (
+                  <button className="btn" onClick={() => session.act(rerollAction)}>
+                    Re-roll ({state.rerolls})
+                  </button>
+                )}
+                {wastedPick && (
+                  <button className="btn" onClick={() => session.act(wastedPick)}>
+                    Take die (no mark)
+                  </button>
+                )}
+                {skipAction && (
+                  <button className="btn" onClick={() => session.act(skipAction)}>
+                    Forfeit roll
+                  </button>
+                )}
+                {passiveSkipAction && (
+                  <button className="btn" onClick={() => session.act(passiveSkipAction)}>
+                    Decline
+                  </button>
+                )}
+                {proceedAction && (
+                  <button className="btn primary" onClick={() => session.act(proceedAction)}>
+                    Roll on ({state.returns} return{state.returns === 1 ? '' : 's'} left)
+                  </button>
+                )}
+                {endTurnAction && (
+                  <button className="btn primary" onClick={() => session.act(endTurnAction)}>
+                    {state.phase === 'endTurn' ? 'End turn' : 'End round'}
+                  </button>
+                )}
+                <button className="btn subtle" onClick={session.undo} disabled={!session.canUndo}>
+                  Undo
+                </button>
+              </>
+            )}
+
+            {mode === 'watch' && (
+              <>
+                <select value={strategyName} onChange={(e) => setStrategyName(e.target.value)}>
+                  {Object.keys(strategiesFor(variant.id)).map((k) => (
+                    <option key={k}>{k}</option>
+                  ))}
+                </select>
+                <label className="hint">
+                  speed
+                  <input
+                    type="range"
+                    min={30}
+                    max={1000}
+                    value={1030 - speed}
+                    onChange={(e) => setSpeed(1030 - Number(e.target.value))}
+                    style={{ verticalAlign: 'middle', marginLeft: 6 }}
+                  />
+                </label>
+                <button
+                  className="btn primary"
+                  onClick={() => setRunning((r) => !r)}
+                  disabled={node.kind === 'over'}
+                >
+                  {running ? 'Pause' : 'Run'}
+                </button>
+                <button
+                  className="btn"
+                  disabled={running || node.kind !== 'decision'}
+                  onClick={() => {
+                    if (node.kind === 'decision') {
+                      session.act(
+                        strategy.choose(state, node.actions, { variant, rng: botRng.current }),
+                      );
+                    }
+                  }}
+                >
+                  Step
+                </button>
+                <button
+                  className="btn"
+                  disabled={running || node.kind === 'over'}
+                  onClick={() => session.finish(strategy, botRng.current)}
+                >
+                  Finish
+                </button>
+              </>
+            )}
+          </div>
+        </DiceTray>
 
         {node.kind === 'over' ? (
           <div className="banner" style={{ marginBottom: 12 }}>
@@ -249,98 +367,6 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
           )
         )}
 
-        <div className="hint status-line">
-          <strong>Round {state.round}/{variant.rounds}</strong> · {phaseLabel(state, variant)}
-          {hint && <> — {hint}</>}
-        </div>
-        <div className="controls" style={{ marginBottom: 12 }}>
-          {mode === 'play' && (
-            <>
-              {rerollAction && (
-                <button className="btn" onClick={() => session.act(rerollAction)}>
-                  Re-roll ({state.rerolls})
-                </button>
-              )}
-              {wastedPick && (
-                <button className="btn" onClick={() => session.act(wastedPick)}>
-                  Take die (no mark)
-                </button>
-              )}
-              {skipAction && (
-                <button className="btn" onClick={() => session.act(skipAction)}>
-                  Forfeit roll
-                </button>
-              )}
-              {passiveSkipAction && (
-                <button className="btn" onClick={() => session.act(passiveSkipAction)}>
-                  Decline
-                </button>
-              )}
-              {proceedAction && (
-                <button className="btn primary" onClick={() => session.act(proceedAction)}>
-                  Roll on ({state.returns} return{state.returns === 1 ? '' : 's'} left)
-                </button>
-              )}
-              {endTurnAction && (
-                <button className="btn primary" onClick={() => session.act(endTurnAction)}>
-                  {state.phase === 'endTurn' ? 'End turn' : 'End round'}
-                </button>
-              )}
-              <button className="btn subtle" onClick={session.undo} disabled={!session.canUndo}>
-                Undo
-              </button>
-              <NewGame reset={session.reset} />
-            </>
-          )}
-
-          {mode === 'watch' && (
-            <>
-              <select value={strategyName} onChange={(e) => setStrategyName(e.target.value)}>
-                {Object.keys(strategiesFor(variant.id)).map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </select>
-              <label className="hint">
-                speed
-                <input
-                  type="range"
-                  min={30}
-                  max={1000}
-                  value={1030 - speed}
-                  onChange={(e) => setSpeed(1030 - Number(e.target.value))}
-                  style={{ verticalAlign: 'middle', marginLeft: 6 }}
-                />
-              </label>
-              <button
-                className="btn primary"
-                onClick={() => setRunning((r) => !r)}
-                disabled={node.kind === 'over'}
-              >
-                {running ? 'Pause' : 'Run'}
-              </button>
-              <button
-                className="btn"
-                disabled={running || node.kind !== 'decision'}
-                onClick={() => {
-                  if (node.kind === 'decision') {
-                    session.act(strategy.choose(state, node.actions, { variant, rng: botRng.current }));
-                  }
-                }}
-              >
-                Step
-              </button>
-              <button
-                className="btn"
-                disabled={running || node.kind === 'over'}
-                onClick={() => session.finish(strategy, botRng.current)}
-              >
-                Finish
-              </button>
-              <NewGame reset={session.reset} />
-            </>
-          )}
-        </div>
-
         <Sheet
           state={state}
           variant={variant}
@@ -371,6 +397,10 @@ function GameView({ mode, variant }: { mode: 'play' | 'watch'; variant: VariantD
         <div className="panel hint">
           Seed {session.seed} · white is wild · blue scores blue+white ·{' '}
           {mode === 'play' ? 'Undo is allowed, it’s a lab.' : `Bot: ${strategy.name}`}
+          <div className="credits-note">
+            Game design by Wolfgang Warsch, published by Schmidt Spiele. This is an unofficial
+            fan-made lab for strategy experiments.
+          </div>
         </div>
       </div>
     </div>
@@ -388,7 +418,7 @@ export function App() {
       <header className="topbar">
         <div className="wordmark">
           Clever Lab<span className="fox-dot">.</span>
-          <small>{variant.name} — solo strategy workbench</small>
+          <small>solo strategy workbench</small>
         </div>
         {variantIds.length > 1 && (
           <select
@@ -418,15 +448,16 @@ export function App() {
       </header>
 
       {mode === 'sim' ? (
-        <SimPanel key={variant.id} variant={variant} />
+        <>
+          <SimPanel key={variant.id} variant={variant} />
+          <footer className="credits">
+            Game design by Wolfgang Warsch, published by Schmidt Spiele. This is an unofficial
+            fan-made lab for strategy experiments.
+          </footer>
+        </>
       ) : (
         <GameView key={`${mode}:${variant.id}`} mode={mode} variant={variant} />
       )}
-
-      <footer className="credits">
-        Game design by Wolfgang Warsch, published by Schmidt Spiele. This is an unofficial
-        fan-made lab for strategy experiments.
-      </footer>
     </div>
   );
 }
