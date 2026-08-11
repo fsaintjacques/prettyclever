@@ -5,3 +5,6 @@ dist/
 tsconfig.tsbuildinfo
 checkpoints/
 .claude/
+
+# Rust
+target/

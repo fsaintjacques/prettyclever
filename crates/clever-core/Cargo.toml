@@ -1,0 +1,17 @@
+[package]
+name = "clever-core"
+version = "0.1.0"
+description = "Shared primitives for the Clever solo dice games: dice mat, action bars, pending decisions, scoring."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+arrayvec.workspace = true
+rand_core.workspace = true
+rand_xoshiro.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
