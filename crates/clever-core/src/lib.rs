@@ -6,8 +6,12 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations)]
 
+mod dieset;
 mod error;
 mod rng;
+mod vocab;
 
+pub use dieset::{DieSet, DieSetIter};
 pub use error::Error;
 pub use rng::{below, shuffle, Rng, RngCore, SeedableRng};
+pub use vocab::{Die, Face, Loc, Pips, Round, Score};
