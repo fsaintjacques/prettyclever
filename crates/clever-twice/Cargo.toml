@@ -1,0 +1,17 @@
+[package]
+name = "clever-twice"
+version = "0.1.0"
+description = "Twice as Clever (Doppelt so clever): the five areas, the platter chain and the solo phase machine."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+arrayvec.workspace = true
+clever-core = { path = "../clever-core" }
+rand_core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rand_xoshiro.workspace = true
