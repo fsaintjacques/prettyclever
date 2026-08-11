@@ -19,17 +19,22 @@ use crate::vocab::Round;
 
 /// The largest action list any decision node of any Clever game offers.
 ///
-/// Measured, not estimated. *That's Pretty Clever* peaks at **13**: the +1
-/// window offers the wild die's six marks plus one or two per colored die, and
-/// the pick phase offers the same set plus a re-roll. That maximum holds over
-/// 20 000 uniform-random games and over a one-ply search that is trying to
-/// widen the node.
+/// Measured in both games, not estimated.
 ///
-/// The constant is set well above it because it is shared with *Twice as
-/// Clever*, whose silver `?` bonus offers up to 24 free marks on its own and
-/// whose lattice gives several dice more than one mark each. `Actions` is an
-/// inline buffer of four-byte actions, so the headroom costs under 200 bytes
-/// on the stack and nothing at all at run time.
+/// *That's Pretty Clever* peaks at **13**: the +1 window offers the wild die's
+/// six marks plus one or two per colored die, and the pick phase offers the
+/// same set plus a re-roll.
+///
+/// *Twice as Clever* peaks at **24**, and it is the silver `?` alone that gets
+/// there: on a blank grid every one of its twenty-four cells is a legal free
+/// mark. Nothing else on that sheet comes close — its widest die node is the
+/// wild die's nine marks, and its widest `?` after silver is blue's eleven
+/// sums.
+///
+/// Both maxima hold over 20 000 uniform-random games per game *and* over a
+/// one-ply search that is trying to widen the node. `Actions` is an inline
+/// buffer of four-byte actions, so doubling the observed maximum for headroom
+/// costs under 200 bytes on the stack and nothing at all at run time.
 pub const MAX_ACTIONS: usize = 48;
 
 /// The legal actions at a decision node.
