@@ -21,7 +21,9 @@
 mod area;
 mod color;
 mod effect;
+mod sheet;
 
 pub use area::{Area, Blue, BlueCell, Green, GreenCross, Orange, Purple, Yellow, YellowCell};
 pub use color::Color;
 pub use effect::{BlackOption, Choice, CrossTarget, Effect, WriteTarget};
+pub use sheet::{Placement, Sheet};
