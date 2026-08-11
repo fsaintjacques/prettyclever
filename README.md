@@ -5,8 +5,8 @@ Wolfgang Warsch) and its sequel **Twice as Clever**, built as a strategy
 laboratory: a dependency-free TypeScript game engine, pluggable bots, headless
 simulation, and a web UI to play, watch bots, and run batches.
 
-The strongest bots are TD(λ) self-play value networks — **250.7** average on the
-base game and **296.5** on Twice as Clever, against rulebook top tiers of 280
+The strongest bots are TD(λ) self-play value networks — **260.0** average on the
+base game and **301.6** on Twice as Clever, against rulebook top tiers of 280
 and 320.
 
 ```bash
@@ -18,14 +18,14 @@ npm test        # engine rules suite
 ## Simulating from the command line
 
 ```bash
-# 1000 games of the trained net
-npm run sim -- --strategy td-net --games 1000 --seed 11
+# 1000 games of the strongest net
+npm run sim -- --strategy td-net-bonus --games 1000 --seed 11
 
 # compare strategies on identical dice
-npm run sim -- --strategy random,greedy,td-net --games 200
+npm run sim -- --strategy random,greedy,td-net,td-net-bonus --games 200
 
 # the sequel
-npm run sim -- --variant twice-as-clever --strategy td-net --games 500
+npm run sim -- --variant twice-as-clever --strategy td-net-bonus --games 500
 
 # one game, turn-by-turn
 npm run sim -- --strategy td-net --games 1 --verbose
@@ -92,9 +92,9 @@ UI. Variant-agnostic algorithms go in `globalStrategies`; entries whose weights
 were tuned or learned for one sheet go under that variant's key in
 `variantStrategies`.
 
-Bundled strategies: `random`, `greedy`, `planner`, `mc`, `mc-greedy`,
+Bundled strategies: `random`, `greedy`, `planner`, `bonusman`, `mc`, `mc-greedy`,
 `expectimax`, `mcts` (all variant-agnostic), plus tuned and learned entries per
-variant — see `strategiesFor(variantId)`.
+variant (`td-net`, `td-net-bonus`, …) — see `strategiesFor(variantId)`.
 
 ## Adding a variant
 
@@ -127,9 +127,31 @@ npx tsx scripts/export-weights.ts checkpoints/mine.json \
   src/strategies/tdnet-twice-weights.ts TDNET_TWICE_WEIGHTS
 ```
 
-Useful flags: `--features v1|v2|twice`, `--episodes`, `--patience` (early stop),
-`--workers`/`--chunk` (parallelism and weight-refresh granularity), `--lr`,
-`--eps-start`/`--eps-end`, `--eval-games`/`--eval-seed`, `--hidden`.
+Useful flags: `--features v1|v2|twice|v1bonus|twicebonus`, `--episodes`,
+`--patience` (early stop), `--workers`/`--chunk` (parallelism and weight-refresh
+granularity), `--lr`, `--eps-start`/`--eps-end`, `--eval-games`/`--eval-seed`,
+`--hidden`.
+
+**Growing a feature set** — do not train it from scratch. `--transplant` starts
+from a narrower trained net, copying its weights and zeroing the input rows for
+the new features, which makes the widened net's play *bit-identical* to its
+source (`widenNet`, guarded by `tests/tdnet-transplant.test.ts`); refinement then
+only ever improves on it. Fresh runs on the wider input have to relearn the old
+competence and stall well below it — that gap was ~17 points for `td-net-bonus`.
+Seeding those rows with noise instead of zero forfeits the property: He-normal
+initialization of the new rows alone costs ~7 points before training even starts
+(see [findings](docs/FINDINGS.md)). Pair the transplant with a low ε:
+
+```bash
+npx tsx scripts/train-td-parallel.ts --features v1bonus \
+  --transplant src/strategies/tdnet-weights.ts \
+  --eps-start 0.04 --eps-end 0.01 --lr 5e-5 \
+  --checkpoint checkpoints/mine.json --out checkpoints/mine-weights.ts
+```
+
+The transplanted net is scored before training touches it, so its eval anchors
+best-net selection and a refinement run cannot ship something weaker than it
+started from.
 
 Two exploration controls exist because plain self-play can collapse onto one
 scoring engine and stay there (see [findings](docs/FINDINGS.md)):
@@ -152,21 +174,32 @@ That's Pretty Clever — rulebook tiers: 140 "not bad", 200 "hats off",
 
 | strategy | mean ± std | p90 | ms/game |
 |---|---|---|---|
-| **td-net** | **250.7 ± 22.5** | 275 | 10 |
+| **td-net-bonus** | **260.0 ± 22.1** | 283 | 13 |
+| td-net | 250.7 ± 22.5 | 275 | 10 |
 | expectimax-tuned | 183.8 ± 35.2 | 230 | 307 |
 | planner-tuned | 170.0 ± 36.9 | 222 | 0.9 |
 | greedy-tuned | 165.9 ± 36.6 | 224 | 0.8 |
 | greedy | 139.3 ± 22.0 | 169 | 1 |
+| bonusman | 117.1 ± 18.2 | 141 | 0.7 |
 | random | 58.7 ± 17.0 | 83 | 0.1 |
 
 Twice as Clever — rating tops out at 320 "Twice as clever!".
 
 | strategy | mean ± std | p90 | ms/game |
 |---|---|---|---|
-| **td-net** | **296.5 ± 35.9** | 340 | 20 |
+| **td-net-bonus** | **301.6 ± 34.6** | 343 | 34 |
+| td-net | 296.5 ± 35.9 | 340 | 28 |
 | mc | 159.2 ± 23.9 | 193 | ~100 |
+| bonusman | 105.1 ± 23.3 | 136 | 1.5 |
 | greedy | 101.8 ± 23.0 | 132 | ~1 |
 | random | 63.6 ± 15.1 | 84 | 0.1 |
+
+`td-net-bonus` is `td-net`'s feature set plus an explicit bonus-economy block
+(banked action-bar unlocks, groups one cell from firing per bonus kind, pull
+toward bonus-carrying track slots). `bonusman` is the hand-written baseline that
+motivated it: it chases printed bonuses instead of points, which costs ~22 points
+against plain greedy on the base game while collecting 65% more foxes and 29% more
+action-bar unlocks.
 
 Held-out seeds confirm every learned entry. The full ladder, the ceiling
 analysis, and the negative results are in [docs/FINDINGS.md](docs/FINDINGS.md).
