@@ -72,6 +72,15 @@ impl<C: Copy, const N: usize> Pending<C, N> {
     /// examined, repeatedly: an entry deeper in the queue may yet become
     /// resolvable again by the time it reaches the front, and is not dropped
     /// pre-emptively.
+    ///
+    /// The predicate almost always needs to read the sheet while the queue is
+    /// borrowed mutably, which is a disjoint-field borrow rather than a
+    /// conflict — destructure first:
+    ///
+    /// ```ignore
+    /// let Self { pending, sheet, stats, .. } = self;
+    /// stats.lose_bonuses(pending.retain_resolvable(|c| sheet.can_resolve(c)));
+    /// ```
     pub fn retain_resolvable(&mut self, resolvable: impl Fn(C) -> bool) -> u32 {
         let mut lost = 0;
         while self.0.first().is_some_and(|&c| !resolvable(c)) {

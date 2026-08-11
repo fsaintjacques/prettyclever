@@ -33,6 +33,15 @@ impl DieSet {
         self.0 &= !Self::bit(d);
     }
 
+    /// Empty the set.
+    ///
+    /// A game's "+1 already used on this die" flags are a `DieSet`, and the
+    /// two games differ only in when they clear it: every turn in *That's
+    /// Pretty Clever*, every round in *Twice as Clever*.
+    pub fn clear(&mut self) {
+        self.0 = 0;
+    }
+
     /// Whether the die is in the set.
     #[must_use]
     pub const fn contains(self, d: Die) -> bool {
@@ -146,6 +155,8 @@ mod tests {
         s.remove(Die::new(5));
         assert_eq!(s.len(), 1);
         assert!(!s.contains(Die::new(5)));
+        s.clear();
+        assert!(s.is_empty());
     }
 
     #[test]
