@@ -1,4 +1,7 @@
+import { makeBonusman } from './bonusman';
 import { makeExpectimax } from './expectimax';
+import { makeTdNetBonus } from './tdnet-bonus';
+import { makeTdNetTwiceBonus } from './tdnet-twice-bonus';
 import { makeGreedy } from './greedy';
 import { makeMcts } from './mcts';
 import { makeMonteCarlo } from './montecarlo';
@@ -12,6 +15,7 @@ import type { Strategy } from './types';
 
 export * from './types';
 export * from './random';
+export * from './bonusman';
 export * from './greedy';
 export * from './montecarlo';
 export * from './tuned';
@@ -19,6 +23,7 @@ export * from './expectimax';
 export * from './mcts';
 export * from './planner';
 export * from './tdnet';
+export * from './tdnet-bonus';
 export * from './tdnet-twice';
 export * from './tdnetv2';
 
@@ -46,6 +51,7 @@ export type StrategyFactory = (opts?: Record<string, unknown>) => Strategy;
 const globalStrategies: Record<string, StrategyFactory> = {
   random: () => makeRandom(),
   greedy: (opts) => makeGreedy(opts as never),
+  bonusman: (opts) => makeBonusman(opts as never),
   planner: (opts) => makePlanner(opts as never),
   mc: (opts) => makeMonteCarlo({ rollouts: 24, policy: 'random', ...opts }),
   'mc-greedy': (opts) => makeMonteCarlo({ rollouts: 8, policy: 'greedy', maxActions: 8, ...opts }),
@@ -73,6 +79,14 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // At an equal 240k-episode budget: 249.7 ± 22.4 / 249.9 ± 23.8 (seeds 11/777)
     // vs v1's 250.7 / 250.1 — the face features are a wash at this width.
     'td-net-v2': (opts) => makeTdNetV2(opts as never),
+    // v1 features + explicit bonus-economy block ("reward chasing"): banked
+    // unlocks, one-away bonus groups per kind, track pull toward bonus slots
+    // (scripts/train-td-parallel.ts --features v1bonus). Trained by
+    // transplanting v1's weights (new feature rows zero-initialized) and
+    // refining at low ε: 260.2 mean over 7 held-out seeds × 500 games vs
+    // 250.3 for td-net — and vs 256.4 for v1 continued at the same budget,
+    // so ~+4 is attributable to the features themselves.
+    'td-net-bonus': (opts) => makeTdNetBonus(opts as never),
     // Expectimax searching over the tuned eval's pruning with the TD net as leaf value.
     // With the 60k-episode net, depth-3 search no longer beats raw td-net (within noise).
     'expectimax-net': (opts) => makeExpectimax({ weights: TUNED_WEIGHTS, evalFn: makeTdNetEval(), ...opts }),
@@ -84,6 +98,10 @@ const variantStrategies: Record<string, Record<string, StrategyFactory>> = {
     // which escaped the yellow-max local optimum into the fox-economy regime:
     // 296.5 ± 35.9 (seed 11) / 296.2 ± 35.3 (seed 777), 500 games each.
     'td-net': (opts) => makeTdNetTwice(opts as never),
+    // Twice net + the bonus-economy chase block, trained with the transplant
+    // + micro-polish recipe (--features twicebonus): 301.3 mean over 5
+    // held-out seeds × 500 games — the first 300+ Twice net in this repo.
+    'td-net-bonus': (opts) => makeTdNetTwiceBonus(opts as never),
   },
 };
 

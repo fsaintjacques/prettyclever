@@ -110,14 +110,16 @@ const v = getVariant('thats-pretty-clever');
 // ---------------------------------------------------------------------------
 
 interface Sparse {
-  idx: Uint8Array;
+  // Uint16: feature sets above 255 inputs would silently wrap Uint8 indices
+  // and corrupt every training sample.
+  idx: Uint16Array;
   val: Float32Array;
 }
 
 function toSparse(x: Float64Array): Sparse {
   let n = 0;
   for (let i = 0; i < x.length; i++) if (x[i] !== 0) n++;
-  const idx = new Uint8Array(n);
+  const idx = new Uint16Array(n);
   const val = new Float32Array(n);
   let j = 0;
   for (let i = 0; i < x.length; i++) {

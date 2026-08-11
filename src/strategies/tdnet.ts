@@ -313,6 +313,41 @@ export function initNet(nIn: number, nH1: number, nH2: number, rng: RNG): Net {
 }
 
 /**
+ * Transplant a trained net onto a wider input layer: the first `src.nIn` rows
+ * of W1 are copied, the rows for the new features are left at *exactly* zero,
+ * and every other tensor is copied verbatim.
+ *
+ * Zero rows contribute `x_i * 0 == 0` to every hidden pre-activation, and
+ * `forward` skips zero features outright, so the transplanted net returns
+ * bit-identical values to `src` for any feature vector agreeing with it on the
+ * first `src.nIn` entries — whatever the new features hold. A transplanted
+ * argmax policy therefore starts out indistinguishable from its source and
+ * only ever improves on it, which is what makes this a usable warm start for
+ * an extended feature set: fresh runs on the wider input have to relearn the
+ * old net's competence from scratch and stall well below it.
+ *
+ * Seeding the new rows with small noise instead of zero forfeits the property
+ * and costs real argmax quality, so there is deliberately no scale parameter.
+ *
+ * Hidden widths must match — growing them has no equivalent
+ * behavior-preserving construction, so it is rejected rather than guessed at.
+ */
+export function widenNet(src: TdNetParams, nIn: number, nH1: number, nH2: number): Net {
+  if (nH1 !== src.nH1 || nH2 !== src.nH2) {
+    throw new Error(
+      `widenNet: hidden widths must match the source (${src.nH1}×${src.nH2}, got ${nH1}×${nH2})`,
+    );
+  }
+  if (nIn < src.nIn) {
+    throw new Error(`widenNet: target nIn ${nIn} is narrower than the source's ${src.nIn}`);
+  }
+  const net = netFromParams(src);
+  const W1 = new Float64Array(nIn * nH1); // zero-filled: the new rows stay zero
+  W1.set(net.W1.subarray(0, src.nIn * nH1));
+  return { ...net, nIn, W1 };
+}
+
+/**
  * Forward pass. `h1`/`h2` receive the post-ReLU hidden activations (the
  * trainer's backprop reads them). The input layer skips zero features — the
  * encoding is mostly sparse binary, which roughly halves the cost.
