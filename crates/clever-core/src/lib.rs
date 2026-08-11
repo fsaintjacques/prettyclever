@@ -6,14 +6,18 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, missing_debug_implementations)]
 
+mod bar;
 mod dieset;
 mod error;
 mod mat;
+mod pending;
 mod rng;
 mod vocab;
 
+pub use bar::{Bar, Unlock};
 pub use dieset::{DieSet, DieSetIter};
 pub use error::Error;
 pub use mat::Mat;
+pub use pending::Pending;
 pub use rng::{below, shuffle, Rng, RngCore, SeedableRng};
 pub use vocab::{Die, Face, Loc, Pips, Round, Score};
