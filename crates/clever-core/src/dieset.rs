@@ -64,6 +64,8 @@ impl DieSet {
     ///
     /// Die order is the order *Twice*'s platter chain queues its row choices
     /// in, so it is part of the contract rather than an implementation detail.
+    /// The iterator is double-ended, because queueing several choices *ahead*
+    /// of the rest means pushing them in reverse.
     #[must_use]
     pub const fn iter(self) -> DieSetIter {
         DieSetIter(self.0)
@@ -121,6 +123,17 @@ impl Iterator for DieSetIter {
     }
 }
 
+impl DoubleEndedIterator for DieSetIter {
+    fn next_back(&mut self) -> Option<Die> {
+        if self.0 == 0 {
+            return None;
+        }
+        let i = (u8::BITS - 1 - self.0.leading_zeros()) as u8;
+        self.0 &= !(1 << i);
+        Some(Die::new(i))
+    }
+}
+
 impl ExactSizeIterator for DieSetIter {}
 
 impl fmt::Debug for DieSet {
@@ -166,6 +179,11 @@ mod tests {
             .collect();
         let got: Vec<u8> = s.iter().map(Die::get).collect();
         assert_eq!(got, vec![1, 4, 7]);
+        // Twice's platter chain pushes its row choices to the front of the
+        // pending queue, which means pushing them in reverse die order.
+        let back: Vec<u8> = s.iter().rev().map(Die::get).collect();
+        assert_eq!(back, vec![7, 4, 1]);
+        assert_eq!(s.iter().len(), 3);
     }
 
     #[test]
