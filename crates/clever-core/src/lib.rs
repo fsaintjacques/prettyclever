@@ -10,6 +10,8 @@
 //!   passive roll;
 //! - the action-bar economy, [`Bar`] and [`Unlock`];
 //! - the decision queue, [`Pending`];
+//! - the [`Solitaire`] contract with [`Node`] and [`Actions`], the shape every
+//!   consumer programs against;
 //! - the fox rule and the score [`Breakdown`], the [`Rating`] lookup,
 //!   [`Stats`] and [`Error`];
 //! - the seeded [`Rng`], so determinism lives in one place.
@@ -46,6 +48,7 @@ mod mat;
 mod pending;
 mod rng;
 mod score;
+mod solitaire;
 mod stats;
 mod vocab;
 
@@ -56,5 +59,6 @@ pub use mat::Mat;
 pub use pending::Pending;
 pub use rng::{below, shuffle, Rng, RngCore, SeedableRng};
 pub use score::{rate, Areas, Breakdown, Rating, MAX_AREAS};
+pub use solitaire::{Actions, Node, Solitaire, MAX_ACTIONS};
 pub use stats::Stats;
 pub use vocab::{Die, Face, Loc, Pips, Round, Score};
