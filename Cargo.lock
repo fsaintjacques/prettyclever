@@ -53,6 +53,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clever-pretty"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "clever-core",
+ "proptest",
+ "rand_core",
+ "rand_xoshiro",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
