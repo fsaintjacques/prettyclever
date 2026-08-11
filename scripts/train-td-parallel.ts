@@ -21,6 +21,12 @@
  *  - --features v1|v2|twice selects the feature set/policy — and with it the
  *    variant, value scale and warm-start teacher (v1/v2: the committed nets on
  *    thats-pretty-clever; twice: the greedy baseline on twice-as-clever).
+ *  - --transplant <net> initializes an extended feature set from a narrower
+ *    trained net (a .json checkpoint or a generated weights module), zeroing
+ *    the new input rows so play starts out identical to the source and then
+ *    refines — see widenNet. Fresh runs on a wider input have to relearn the
+ *    old competence and stall well below it, so this is the way to grow a
+ *    feature set. Implies no warm start.
  *  - --spotlight <p> plays that fraction of episodes with an "area spotlight":
  *    the behavior policy gets +--spotlight-beta per filled cell of one random
  *    area from --spotlight-areas (default: all), generating coherent
@@ -29,6 +35,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import { resolve } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
   applyAction,
@@ -53,6 +60,7 @@ import {
   netFromParams,
   paramsFromNet,
   TD_FEATURES,
+  widenNet,
   type EvalCtx,
   type Net,
   type TdNetParams,
@@ -615,6 +623,27 @@ interface Checkpoint {
   }[];
 }
 
+/**
+ * Read a source net for --transplant: either a trainer checkpoint (.json —
+ * its best net, falling back to the live one) or a generated weights module
+ * (.ts / .js, whose single exported TdNetParams is taken).
+ */
+async function loadParams(path: string): Promise<TdNetParams> {
+  if (!existsSync(path)) throw new Error(`--transplant: no such file '${path}'`);
+  if (path.endsWith('.json')) {
+    const ck = JSON.parse(readFileSync(path, 'utf8')) as Checkpoint;
+    const p = ck.bestParams ?? ck.params;
+    if (!p) throw new Error(`--transplant: '${path}' holds no params`);
+    return p;
+  }
+  const mod = (await import(resolve(path))) as Record<string, unknown>;
+  const hit = Object.values(mod).find(
+    (x): x is TdNetParams => typeof x === 'object' && x !== null && 'W1' in x && 'nIn' in x,
+  );
+  if (!hit) throw new Error(`--transplant: '${path}' exports no TdNetParams`);
+  return hit;
+}
+
 async function main(): Promise<void> {
   const parseArgs = (argv: string[]): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -655,6 +684,7 @@ async function main(): Promise<void> {
     cap: args.cap,
     capYellow: num('cap-yellow', 0),
     resume: args.resume,
+    transplant: args.transplant,
     checkpoint: args.checkpoint ?? 'checkpoints/td-parallel.json',
     out: args.out ?? 'checkpoints/tdnet-weights-parallel.ts',
   };
@@ -685,7 +715,20 @@ async function main(): Promise<void> {
   let bestParams: TdNetParams | null = null;
   let warmDone = false;
   let curve: Checkpoint['curve'] = [];
-  if (cfg.fresh) {
+  if (cfg.transplant) {
+    // Extended feature set: start from a narrower trained net with the new
+    // input rows zeroed, which reproduces its policy exactly (see widenNet)
+    // and then refine. Skips the warm start — the net is already competent,
+    // and regressing it on a teacher's Monte-Carlo returns would undo that.
+    const src = await loadParams(cfg.transplant);
+    net = widenNet(src, fs.n, cfg.hidden, cfg.hidden);
+    trainer = new Trainer(net, cfg.batch);
+    warmDone = true;
+    console.log(
+      `transplanted ${cfg.transplant} (${src.nIn}→${fs.n} inputs, ${src.nH1}×${src.nH2} hidden, ` +
+        `${fs.n - src.nIn} new rows zeroed) — refining directly, no warm start`,
+    );
+  } else if (cfg.fresh) {
     net = initNet(fs.n, cfg.hidden, cfg.hidden, mulberry32((cfg.seed ^ 0x5eed) >>> 0));
     trainer = new Trainer(net, cfg.batch);
     console.log(
@@ -694,7 +737,9 @@ async function main(): Promise<void> {
     );
   } else {
     if (!cfg.resume || !existsSync(cfg.resume)) {
-      throw new Error('pass --resume <checkpoint> (or --fresh to initialize a new net)');
+      throw new Error(
+        'pass --resume <checkpoint>, --transplant <narrower net> or --fresh to initialize a new net',
+      );
     }
     const ck = JSON.parse(readFileSync(cfg.resume, 'utf8')) as Checkpoint;
     if (ck.params.nIn !== fs.n) {
@@ -817,6 +862,12 @@ async function main(): Promise<void> {
 
   const startEp = episode;
   const rate = () => (episode - startEp) / Math.max(1, elapsedSec());
+
+  // Score the transplanted net before training touches it: this both confirms
+  // the transplant preserved the source's play and anchors best-net selection
+  // to it, so a refinement run cannot ship something weaker than it began
+  // with. (--resume already carries its checkpoint's bestMean.)
+  if (cfg.transplant) runEval();
 
   // Worker threads do not reliably inherit the tsx loader across Node
   // versions, so boot each worker through a data-URL shim that registers tsx
